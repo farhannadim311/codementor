@@ -1,0 +1,136 @@
+.code-editor {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 14px;
+}
+
+.code-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.window-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.window-controls .control {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.window-controls .close {
+    background: #ff5f56;
+}
+
+.window-controls .minimize {
+    background: #ffbd2e;
+}
+
+.window-controls .maximize {
+    background: #27ca40;
+}
+
+.language-badge {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.code-editor-content {
+    padding: var(--space-md);
+    overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.code-display {
+    display: flex;
+    flex-direction: column;
+}
+
+.code-line {
+    display: flex;
+    padding: 2px 0;
+    transition: background var(--transition-fast);
+    border-left: 3px solid transparent;
+    margin-left: -3px;
+}
+
+.code-line.highlighted {
+    background: rgba(99, 102, 241, 0.15);
+    border-left-color: var(--accent-primary);
+    animation: highlightPulse 2s ease-in-out infinite;
+}
+
+@keyframes highlightPulse {
+
+    0%,
+    100% {
+        background: rgba(99, 102, 241, 0.15);
+    }
+
+    50% {
+        background: rgba(99, 102, 241, 0.25);
+    }
+}
+
+.line-number {
+    min-width: 40px;
+    padding-right: var(--space-md);
+    color: var(--text-muted);
+    text-align: right;
+    user-select: none;
+    font-size: 0.85em;
+}
+
+.line-content {
+    flex: 1;
+    white-space: pre;
+}
+
+.line-content code {
+    background: none;
+    padding: 0;
+    color: var(--text-primary);
+}
+
+.code-input {
+    width: 100%;
+    min-height: 300px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    resize: vertical;
+    outline: none;
+}
+
+.highlight-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: rgba(99, 102, 241, 0.1);
+    border-top: 1px solid rgba(99, 102, 241, 0.2);
+    font-size: 0.85rem;
+    color: var(--accent-primary);
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    animation: pulse 1.5s ease-in-out infinite;
+}
