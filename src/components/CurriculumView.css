@@ -1,0 +1,184 @@
+/* Curriculum View Styles */
+.curriculum-container {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.curriculum-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.curriculum-header h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    color: var(--accent-primary);
+}
+
+.generate-btn {
+    background: var(--gradient-primary);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: var(--border-radius-md);
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+}
+
+.generate-btn:hover {
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+    transform: translateY(-1px);
+}
+
+.generate-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.modules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.module-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.module-card:hover {
+    border-color: var(--accent-primary);
+}
+
+.module-header {
+    padding: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.module-number {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    flex-shrink: 0;
+    border: 1px solid var(--border-color);
+}
+
+.module-info {
+    flex: 1;
+}
+
+.module-info h4 {
+    margin: 0 0 4px 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.module-info p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.exercises-list {
+    border-top: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.1);
+    padding: 12px 16px;
+}
+
+.exercise-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.exercise-item:last-child {
+    border-bottom: none;
+}
+
+.exercise-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.exercise-prompt {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.exercise-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.difficulty-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    text-transform: capitalize;
+    font-weight: 500;
+}
+
+.difficulty-badge.easy {
+    background: rgba(74, 222, 128, 0.1);
+    color: var(--accent-success);
+}
+
+.difficulty-badge.medium {
+    background: rgba(250, 204, 21, 0.1);
+    color: var(--accent-warning);
+}
+
+.difficulty-badge.hard {
+    background: rgba(248, 113, 113, 0.1);
+    color: var(--accent-error);
+}
+
+.start-btn {
+    background: transparent;
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.start-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.empty-curriculum {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+}

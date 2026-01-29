@@ -12,6 +12,9 @@ import {
   FolderOpen,
   Github,
   Trash2,
+  Terminal as TerminalIcon,
+  Brain,
+  Code2,
 } from 'lucide-react';
 import { MonacoEditor, type FileItem } from './components/MonacoEditor';
 import { FileManager } from './components/FileManager';
@@ -19,9 +22,14 @@ import { GitHubClone } from './components/GitHubClone';
 import { VoiceInterface } from './components/VoiceInterface';
 import { TeachingChat } from './components/TeachingChat';
 import { ProgressDashboard } from './components/ProgressDashboard';
+import { Terminal, type TerminalOutput, type CompilerInfo } from './components/Terminal';
+import { ExplainItBack } from './components/ExplainItBack';
+import { CodeReviewMode } from './components/CodeReviewMode';
 import {
   checkBackendHealth,
-  getTeachingResponse,
+  streamTeachingResponse,
+  getCompilers,
+  executeCode,
 } from './services/gemini';
 import {
   initializeDatabase,
@@ -85,6 +93,19 @@ function App() {
   const [showNudge, setShowNudge] = useState(false);
   const [nudgeInfo, setNudgeInfo] = useState<{ reason: string; file?: string; line?: number }>({ reason: '' });
 
+  // Terminal state
+  const [showTerminal, setShowTerminal] = useState(true);
+  const [terminalOutput, setTerminalOutput] = useState<TerminalOutput[]>([]);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [lastExitCode, setLastExitCode] = useState<number | undefined>(undefined);
+  const [compilers, setCompilers] = useState<CompilerInfo[]>([]);
+
+  // Explain It Back modal state
+  const [showExplainItBack, setShowExplainItBack] = useState(false);
+
+  // Code Review modal state
+  const [showCodeReview, setShowCodeReview] = useState(false);
+
   // Initialize app
   useEffect(() => {
     const init = async () => {
@@ -125,12 +146,35 @@ function App() {
         onIdleDetected: handleIdleDetected,
       });
       detector.start(); // Start the detection loop!
-      initializeWeaknessDetector();
+      const weaknessAgent = initializeWeaknessDetector();
+      weaknessAgent.setWeaknessCallback(async (weakness) => {
+        showNotification('info', `New area to improve detected: ${weakness.topic}`);
+        // Reload profile to get updates
+        const updated = await getProfile();
+        if (updated) setProfile(updated);
+      });
+      weaknessAgent.setStrengthCallback(async (strength) => {
+        showNotification('success', `New strength detected: ${strength}! Keep it up!`);
+        const updated = await getProfile();
+        if (updated) setProfile(updated);
+      });
+      weaknessAgent.setResolvedCallback(async (topic) => {
+        showNotification('success', `Awesome! You've improved on: ${topic}. It has been removed from your focus areas.`);
+        const updated = await getProfile();
+        if (updated) setProfile(updated);
+      });
+      // Run analysis every 5 minutes (for demo purposes)
+      weaknessAgent.startPeriodicAnalysis(5 * 60 * 1000);
+
       initializeCurriculumGenerator();
 
       // Start a new session
       const newSession = createSession();
       setSession(newSession);
+
+      // Load available compilers
+      const compilersData = await getCompilers();
+      setCompilers(compilersData.available);
 
       setIsLoading(false);
     };
@@ -141,13 +185,51 @@ function App() {
   // Save session periodically
   useEffect(() => {
     if (session) {
-      const interval = setInterval(() => {
-        saveSession(session);
+      const interval = setInterval(async () => {
+        // Only track if not idle (check stuck detector state)
+        const detector = getStuckDetector();
+        const stats = detector?.getStats();
+        // If modified within last minute, count as active
+        const isActive = stats && stats.timeSinceLastChange < 60000;
+
+        if (isActive) {
+          saveSession(session);
+
+          if (profile) {
+            const updatedProfile = { ...profile };
+            updatedProfile.totalCodingTime += 0.5; // (0.5 mins)
+            updatedProfile.lastSessionAt = new Date();
+
+            // Simple topic tracking based on active file
+            const activeFile = files.find(f => f.id === activeFileId);
+            if (activeFile) {
+              const lang = activeFile.language;
+              const existingTopic = updatedProfile.topics.find(t => t.topic === lang);
+
+              if (existingTopic) {
+                existingTopic.timeSpent += 0.5;
+                existingTopic.lastPracticed = new Date();
+              } else {
+                updatedProfile.topics.push({
+                  topic: lang,
+                  level: 'beginner',
+                  timeSpent: 0.5,
+                  successRate: 0,
+                  lastPracticed: new Date(),
+                  struggles: []
+                });
+              }
+            }
+
+            setProfile(updatedProfile);
+            await saveProfile(updatedProfile);
+          }
+        }
       }, 30000); // Every 30 seconds
 
       return () => clearInterval(interval);
     }
-  }, [session]);
+  }, [session, profile, files, activeFileId]);
 
   const handleStuckDetected = useCallback((moment: StuckMoment, reason: string) => {
     // Show nudge popup instead of just a notification
@@ -202,6 +284,92 @@ function App() {
     getStuckDetector()?.acknowledgeHelp();
   }, []);
 
+  // Run code in terminal
+  const handleRunCode = useCallback(async () => {
+    const activeFile = files.find((f) => f.id === activeFileId);
+    if (!activeFile || activeFile.type !== 'code') return;
+
+    setIsExecuting(true);
+    setLastExitCode(undefined);
+
+    // Add command line to output
+    setTerminalOutput((prev) => [
+      ...prev,
+      {
+        type: 'command',
+        content: `Running ${activeFile.name}...`,
+        timestamp: new Date(),
+      },
+    ]);
+
+    try {
+      // Collect additional files (data files in the same directory or all text files)
+      // These are files referenced by the code (like words.txt, input.txt, etc.)
+      const additionalFiles = files
+        .filter(f =>
+          f.id !== activeFileId && // Not the main file
+          f.type !== 'image' &&     // Not images
+          f.type !== 'pdf' &&       // Not PDFs  
+          f.content                  // Has content
+        )
+        .map(f => ({ name: f.name, content: f.content }));
+
+      const result = await executeCode(activeFile.content, activeFile.name, additionalFiles);
+
+      // Add output
+      const newOutput: TerminalOutput[] = [];
+
+      if (result.stdout) {
+        newOutput.push({
+          type: 'stdout',
+          content: result.stdout,
+          timestamp: new Date(),
+        });
+      }
+
+      if (result.stderr) {
+        newOutput.push({
+          type: 'stderr',
+          content: result.stderr,
+          timestamp: new Date(),
+        });
+      }
+
+      // Add execution summary
+      newOutput.push({
+        type: 'system',
+        content: `\n[${result.language}] Process exited with code ${result.exitCode} (${result.executionTime}ms)`,
+        timestamp: new Date(),
+      });
+
+      setTerminalOutput((prev) => [...prev, ...newOutput]);
+      setLastExitCode(result.exitCode);
+
+      // If there were errors, offer to send to AI
+      if (result.stderr && result.exitCode !== 0) {
+        showNotification('info', 'Runtime error detected. Ask the AI tutor for help!');
+      }
+    } catch (error) {
+      setTerminalOutput((prev) => [
+        ...prev,
+        {
+          type: 'stderr',
+          content: error instanceof Error ? error.message : 'Execution failed',
+          timestamp: new Date(),
+        },
+      ]);
+      setLastExitCode(1);
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [activeFileId, files]);
+
+  // Clear terminal output
+  const handleClearTerminal = useCallback(() => {
+    setTerminalOutput([]);
+    setLastExitCode(undefined);
+  }, []);
+
   const showNotification = (
     type: 'success' | 'error' | 'warning' | 'info',
     message: string
@@ -228,8 +396,13 @@ function App() {
   };
 
   const handleFileClose = async (fileId: string) => {
+    const fileToDelete = files.find((f) => f.id === fileId);
     setFiles((prev) => prev.filter((f) => f.id !== fileId));
-    await deleteStoredFile(fileId);
+
+    if (fileToDelete) {
+      await deleteStoredFile(fileToDelete.name);
+    }
+
     if (activeFileId === fileId) {
       const remaining = files.filter((f) => f.id !== fileId);
       setActiveFileId(remaining.length > 0 ? remaining[0].id : null);
@@ -341,32 +514,97 @@ ${pdfContext ? `\n${pdfContext}` : ''}
 Student's question: ${message}`;
 
     try {
-      const result = await getTeachingResponse(
-        contextualMessage,
-        activeFileContent,
-        learningHistory,
-        currentHintLevel
-      );
-
+      // 1. Create placeholder interaction
+      const interactionId = `int_${Date.now()}`;
       const newInteraction: Interaction = {
-        id: `int_${Date.now()}`,
+        id: interactionId,
         timestamp: new Date(),
         type: interactionMode,
         userMessage: message,
-        aiResponse: result.response,
-        highlightedLines: result.highlightLines,
+        aiResponse: '',
+        thinkingSummary: '',
+        isStreaming: true,
       };
 
       setInteractions((prev) => [...prev, newInteraction]);
-      setHighlightedLines(result.highlightLines);
-      setCurrentHintLevel(result.suggestedHintLevel);
+
+      // 2. Get adaptive hint level and struggle context from stuck detector
+      const detector = getStuckDetector();
+      const adaptiveHintLevel = detector?.getAdaptiveHintLevel() || currentHintLevel;
+      const struggleContext = detector?.getStruggleContext() || '';
+
+      // Use the higher of: current hint level or adaptive level
+      const effectiveHintLevel = Math.max(currentHintLevel, adaptiveHintLevel);
+
+      // 3. Start stream with adaptive context
+      const stream = streamTeachingResponse(
+        contextualMessage,
+        activeFileContent,
+        learningHistory,
+        effectiveHintLevel,
+        undefined, // pdfContent already in contextualMessage
+        struggleContext
+      );
+
+      let fullResponse = '';
+      let fullThought = '';
+
+      for await (const chunk of stream) {
+        if (chunk.type === 'text') {
+          fullResponse += chunk.content;
+        } else if (chunk.type === 'thought') {
+          fullThought += chunk.content;
+        }
+
+        setInteractions((prev) =>
+          prev.map((i) =>
+            i.id === interactionId
+              ? { ...i, aiResponse: fullResponse, thinkingSummary: fullThought }
+              : i
+          )
+        );
+      }
+
+      // 4. Finalize
+      setInteractions((prev) =>
+        prev.map((i) =>
+          i.id === interactionId
+            ? { ...i, isStreaming: false }
+            : i
+        )
+      );
+
+      // Extract line numbers from final response (simple regex check)
+      const lineMatches = fullResponse.match(/lines?\s+(\d+)(?:\s*-\s*(\d+))?/gi);
+      const highlightLines: number[] = [];
+      if (lineMatches) {
+        lineMatches.forEach((match) => {
+          const nums = match.match(/\d+/g);
+          if (nums) {
+            const start = parseInt(nums[0]);
+            const end = nums[1] ? parseInt(nums[1]) : start;
+            for (let i = start; i <= end; i++) {
+              highlightLines.push(i);
+            }
+          }
+        });
+      }
+
+      setHighlightedLines([...new Set(highlightLines)]);
 
       // Update session
       setSession((prev) => {
         if (!prev) return prev;
+        const completeInteraction = {
+          ...newInteraction,
+          aiResponse: fullResponse,
+          thinkingSummary: fullThought,
+          highlightedLines: [...new Set(highlightLines)],
+          isStreaming: false
+        };
         return {
           ...prev,
-          interactions: [...prev.interactions, newInteraction],
+          interactions: [...prev.interactions, completeInteraction],
         };
       });
 
@@ -374,6 +612,8 @@ Student's question: ${message}`;
       getStuckDetector()?.acknowledgeHelp();
     } catch (error) {
       showNotification('error', 'Failed to get response. Please try again.');
+      // Remove the failed interaction
+      setInteractions(prev => prev.filter(i => i.aiResponse || i.thinkingSummary));
       console.error('Teaching response error:', error);
     } finally {
       setIsProcessing(false);
@@ -381,6 +621,14 @@ Student's question: ${message}`;
   };
 
   const handleRequestHint = () => {
+    // Record hint request with the stuck detector for adaptive difficulty
+    const detector = getStuckDetector();
+    const activeFile = files.find((f) => f.id === activeFileId);
+    detector?.recordHintRequest(activeFile?.name);
+
+    // Increase manual hint level (user explicitly asking for more help)
+    setCurrentHintLevel((prev) => Math.min(prev + 1, 5));
+
     handleSendMessage("I'm stuck. Can you give me a hint without giving away the answer?");
   };
 
@@ -392,10 +640,59 @@ Student's question: ${message}`;
     // Could trigger highlighting animation
   };
 
-  const handleStartPractice = (topic: string) => {
+  const handleStartPractice = (topic: string, prompt?: string) => {
     showNotification('info', `Starting practice for: ${topic}`);
+
+    // Create a new exercise file with starter code template
+    const sanitizedTopic = topic.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 20);
+    const timestamp = Date.now();
+    const exerciseFileName = `exercise_${sanitizedTopic}_${timestamp}.js`;
+
+    // Generate starter code template based on the topic
+    const starterCode = `/**
+ * 🎯 Exercise: ${topic}
+ * ${prompt ? `\n * Challenge: ${prompt}` : ''}
+ * 
+ * Instructions:
+ * 1. Read the problem carefully
+ * 2. Write your solution below
+ * 3. Ask CodeMentor for hints if you get stuck!
+ * 
+ * Good luck! 💪
+ */
+
+// TODO: Write your solution here
+function solution() {
+  // Your code goes here
+  
+}
+
+// Test your solution
+// solution();
+`;
+
+    // Create the new file
+    const newFile: FileItem = {
+      id: `exercise-${timestamp}`,
+      name: exerciseFileName,
+      content: starterCode,
+      type: 'code',
+      language: 'javascript',
+      lastModified: new Date(),
+    };
+
+    setFiles(prevFiles => [...prevFiles, newFile]);
+    setActiveFileId(newFile.id);
+
+    // Switch to editor view and then to chat
     setCurrentView('chat');
-    handleSendMessage(`I want to practice ${topic}. Can you give me a problem to solve?`);
+
+    // Send message to CodeMentor to start the exercise
+    if (prompt) {
+      handleSendMessage(`I've created a new file "${exerciseFileName}" for this exercise. The challenge is: "${prompt}". Please guide me step by step on how to approach this problem on ${topic}.`);
+    } else {
+      handleSendMessage(`I've created a new file "${exerciseFileName}" to practice ${topic}. Can you give me a problem to solve and guide me through it?`);
+    }
   };
 
   const handleRetryConnection = async () => {
@@ -518,6 +815,38 @@ Student's question: ${message}`;
             <span>Start Fresh</span>
           </button>
 
+          {/* Terminal toggle */}
+          <button
+            className={`capture-btn ${showTerminal ? 'active' : ''}`}
+            onClick={() => setShowTerminal(!showTerminal)}
+            title="Toggle terminal"
+          >
+            <TerminalIcon size={18} />
+            <span>Terminal</span>
+          </button>
+
+          {/* Explain It Back - Feynman Technique */}
+          <button
+            className="capture-btn"
+            onClick={() => setShowExplainItBack(true)}
+            title="Explain your code to validate understanding"
+            disabled={!activeFileId || files.find(f => f.id === activeFileId)?.type !== 'code'}
+          >
+            <Brain size={18} />
+            <span>Explain</span>
+          </button>
+
+          {/* Code Review Mode */}
+          <button
+            className="capture-btn"
+            onClick={() => setShowCodeReview(true)}
+            title="Get AI-powered code review with probing questions"
+            disabled={!activeFileId || files.find(f => f.id === activeFileId)?.type !== 'code'}
+          >
+            <Code2 size={18} />
+            <span>Review</span>
+          </button>
+
           {/* Mode toggle */}
           <div className="mode-toggle">
             <button
@@ -582,17 +911,32 @@ Student's question: ${message}`;
 
               {/* Editor Area */}
               <div className="editor-area">
-                <MonacoEditor
-                  files={files}
-                  activeFileId={activeFileId}
-                  onFileChange={handleFileChange}
-                  onFileSelect={handleFileSelect}
-                  onFileClose={handleFileClose}
-                  onFilesUpload={handleFilesUpload}
-                  highlightedLines={highlightedLines}
-                  onCodeActivity={handleCodeActivity}
-                  onSyntaxErrors={handleSyntaxErrors}
-                />
+                <div className="editor-main">
+                  <MonacoEditor
+                    files={files}
+                    activeFileId={activeFileId}
+                    onFileChange={handleFileChange}
+                    onFileSelect={handleFileSelect}
+                    onFileClose={handleFileClose}
+                    onFilesUpload={handleFilesUpload}
+                    highlightedLines={highlightedLines}
+                    onCodeActivity={handleCodeActivity}
+                    onSyntaxErrors={handleSyntaxErrors}
+                  />
+                </div>
+                {showTerminal && (
+                  <div className="terminal-panel">
+                    <Terminal
+                      onRun={handleRunCode}
+                      isRunning={isExecuting}
+                      output={terminalOutput}
+                      compilers={compilers}
+                      activeFilename={files.find((f) => f.id === activeFileId)?.name}
+                      lastExitCode={lastExitCode}
+                      onClear={handleClearTerminal}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Chat Panel */}
@@ -634,6 +978,10 @@ Student's question: ${message}`;
               <ProgressDashboard
                 profile={profile}
                 onStartPractice={handleStartPractice}
+                onProfileUpdate={async () => {
+                  const updated = await getProfile();
+                  if (updated) setProfile(updated);
+                }}
               />
             </div>
           )}
@@ -658,6 +1006,33 @@ Student's question: ${message}`;
           handleRequestHint();
         }}
         onDismiss={handleNudgeDismiss}
+      />
+
+      {/* Explain It Back Modal */}
+      <ExplainItBack
+        isOpen={showExplainItBack}
+        onClose={() => setShowExplainItBack(false)}
+        code={files.find(f => f.id === activeFileId)?.content || ''}
+        language={files.find(f => f.id === activeFileId)?.language || 'javascript'}
+        onValidationComplete={(passed, _feedback) => {
+          if (passed) {
+            showNotification('success', '🎉 Great understanding demonstrated!');
+            // Reset adaptive state when student proves understanding
+            getStuckDetector()?.resetAdaptiveState();
+          } else {
+            showNotification('info', 'Keep practicing! Review the feedback for improvement areas.');
+          }
+        }}
+      />
+
+      {/* Code Review Modal */}
+      <CodeReviewMode
+        isOpen={showCodeReview}
+        onClose={() => setShowCodeReview(false)}
+        code={files.find(f => f.id === activeFileId)?.content || ''}
+        language={files.find(f => f.id === activeFileId)?.language || 'javascript'}
+        fileName={files.find(f => f.id === activeFileId)?.name || 'code'}
+        onHighlightLines={(lines) => setHighlightedLines(lines)}
       />
     </div>
   );

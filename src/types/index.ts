@@ -52,6 +52,8 @@ export interface Interaction {
   aiResponse: string;
   highlightedLines?: number[];
   highlightedFile?: string;
+  thinkingSummary?: string;
+  isStreaming?: boolean;
 }
 
 export interface StuckMoment {

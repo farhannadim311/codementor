@@ -1,73 +1,66 @@
-# React + TypeScript + Vite
+# CodeMentor - AI-Powered Coding Tutor
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**CodeMentor** is a specific AI-teaching assistant designed to guide you through coding assignments without giving away the answers. It uses **Google's Gemini 3** model with socratic teaching methods, thinking levels, and stateful interactions to provide a personalized learning experience.
 
-Currently, two official plugins are available:
+![CodeMentor Dashboard](./screenshot.png)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🚀 Key Features
 
-## React Compiler
+### 🧠 Intelligent Teaching AI
+- **Socratic Method**: Asks guiding questions instead of solving problems for you.
+- **Thinking Levels**: Adapts reasoning depth (High for complex debugging, Low for quick chats).
+- **Streaming Responses**: Real-time feedback with visible "Thinking" process summaries.
+- **Context Aware**: Understands your open files, terminal output, and assignment PDFs.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 💻 Integrated Development Environment
+- **VS Code-Like Editor**: Built with Monaco Editor for a familiar coding experience.
+- **Interactive Terminal**: Real bash/zsh shell integrated directly into the browser.
+- **Local File System**: Edits are saved directly to your local `~/CodeMentorProjects` directory.
+- **Multi-Language Support**: Python, JavaScript, TypeScript, C++, Java, and more.
 
-## Expanding the ESLint configuration
+### 📊 Learning Analytics
+- **Progress Dashboard**: Track your study streaks, total coding time, and topics mastered.
+- **Weakness Detection**: Automatically identifies areas where you struggle (e.g., "Recursion").
+- **Smart Nudges**: Detects when you are stuck (idle or repeated errors) and proactively offers help.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 🛠️ Architecture
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- **Frontend**: React, Vite, Monaco Editor, XTerm.js
+- **Backend**: Express.js server, Node.js child_process (for shell/execution)
+- **AI**: Google Gemini 3 Interactions API (Multimodal, Long Context)
+- **Storage**: IndexedDB (for profile/stats), Local File System (for code)
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 🚀 Getting Started
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+1.  **Install Dependencies**:
+    ```bash
+    npm install
+    ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+2.  **Environment Setup**:
+    Create a `.env` file in the root directory:
+    ```
+    GEMINI_API_KEY=your_gemini_api_key_here
+    ```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+3.  **Run the Application**:
+    Start both the frontend and backend servers:
+    ```bash
+    npm run dev:all
+    ```
+    Or run them separately:
+    ```bash
+    npm run server   # Starts backend on port 3001
+    npm run dev      # Starts frontend on port 5173
+    ```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+4.  **Open in Browser**:
+    Visit `http://localhost:5173` to start coding!
+
+## 🤝 Contributing
+
+This project was built for the **Google DeepMind Gemini 3 Hackathon**.
+
+## 📄 License
+
+MIT

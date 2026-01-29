@@ -15,11 +15,21 @@ class WeaknessDetectorAgent {
     private patterns: Map<string, WeaknessPattern> = new Map();
     private analysisInterval: ReturnType<typeof setInterval> | null = null;
     private onWeaknessDetected: (weakness: Weakness) => void = () => { };
+    private onStrengthDetected: (strength: string) => void = () => { };
+    private onWeaknessResolved: (topic: string) => void = () => { };
 
     constructor() { }
 
     setWeaknessCallback(callback: (weakness: Weakness) => void): void {
         this.onWeaknessDetected = callback;
+    }
+
+    setStrengthCallback(callback: (strength: string) => void): void {
+        this.onStrengthDetected = callback;
+    }
+
+    setResolvedCallback(callback: (topic: string) => void): void {
+        this.onWeaknessResolved = callback;
     }
 
     // Start periodic analysis (runs every hour or after each session)
@@ -87,12 +97,19 @@ class WeaknessDetectorAgent {
                     }
                 });
 
+                // Update strengths
+                const currentStrengths = new Set(profile.strengths);
+                detected.newStrengths?.forEach(s => currentStrengths.add(s));
+                profile.strengths = Array.from(currentStrengths);
+
                 // Save updated profile
                 profile.weaknesses = finalWeaknesses;
                 await saveProfile(profile);
 
-                // Notify about new weaknesses
+                // Notify about new weaknesses & strengths & resolved
                 newWeaknesses.forEach((w) => this.onWeaknessDetected(w));
+                detected.newStrengths?.forEach(s => this.onStrengthDetected(s));
+                detected.resolvedWeaknesses?.forEach(topic => this.onWeaknessResolved(topic));
 
                 return finalWeaknesses;
             }
@@ -195,7 +212,7 @@ class WeaknessDetectorAgent {
 
     private buildSessionSummary(sessions: CodingSession[]): string {
         const summaries = sessions.map((session) => {
-            const duration = session.endTime
+            const _duration = session.endTime
                 ? Math.round(
                     (new Date(session.endTime).getTime() - new Date(session.startTime).getTime()) /
                     1000 /
@@ -203,15 +220,22 @@ class WeaknessDetectorAgent {
                 )
                 : 0;
 
+            const mainFile = session.files[0];
+            const codeSample = mainFile ? `
+Code Sample (${mainFile.filename}):
+\`\`\`${mainFile.language}
+${mainFile.content.slice(0, 1000)}${mainFile.content.length > 1000 ? '...' : ''}
+\`\`\`` : '';
+
             return `
 Session on ${new Date(session.startTime).toLocaleDateString()}:
-- Duration: ${duration} minutes
 - Files: ${session.files.map((f) => f.filename).join(', ') || 'unknown'}
 - Stuck moments: ${session.stuckMoments.length}
 - Help requests: ${session.interactions.length}
 - Topics discussed: ${session.interactions
                     .map((i) => this.extractTopics(i.aiResponse).join(', '))
                     .join('; ')}
+${codeSample}
       `.trim();
         });
 

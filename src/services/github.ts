@@ -1,14 +1,6 @@
 // GitHub Service - Clone repos via GitHub API
 import type { FileItem } from '../components/MonacoEditor';
 
-interface GitHubFile {
-    name: string;
-    path: string;
-    type: 'file' | 'dir';
-    download_url: string | null;
-    sha: string;
-}
-
 interface GitHubTreeItem {
     path: string;
     mode: string;

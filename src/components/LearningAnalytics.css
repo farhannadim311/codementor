@@ -1,0 +1,138 @@
+/* LearningAnalytics Component Styles */
+
+.learning-analytics {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+}
+
+.analytics-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.analytics-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+/* Improvement Badges */
+.improvement-badges {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.improvement-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    transition: transform 0.2s;
+}
+
+.improvement-badge:hover {
+    transform: translateY(-2px);
+}
+
+.improvement-badge.positive {
+    border-color: rgba(74, 222, 128, 0.3);
+    background: rgba(74, 222, 128, 0.08);
+}
+
+.improvement-badge.positive svg {
+    color: var(--accent-success);
+}
+
+.improvement-badge.negative {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.improvement-badge.negative svg {
+    color: var(--accent-error);
+}
+
+.improvement-badge.neutral {
+    border-color: rgba(251, 191, 36, 0.3);
+    background: rgba(251, 191, 36, 0.08);
+}
+
+.improvement-badge.neutral svg {
+    color: var(--accent-warning);
+}
+
+.improvement-badge.info {
+    border-color: rgba(99, 102, 241, 0.3);
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.improvement-badge.info svg {
+    color: var(--accent-primary);
+}
+
+.badge-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.badge-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.improvement-badge.positive .badge-value {
+    color: var(--accent-success);
+}
+
+.improvement-badge.negative .badge-value {
+    color: var(--accent-error);
+}
+
+.badge-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Chart Sections */
+.chart-section {
+    margin-bottom: 20px;
+}
+
+.chart-section:last-child {
+    margin-bottom: 0;
+}
+
+.chart-section h4 {
+    margin: 0 0 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.chart-container {
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+}
+
+/* Recharts Custom Styling */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+    stroke: var(--border-color);
+}
+
+.recharts-tooltip-wrapper {
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.2));
+}

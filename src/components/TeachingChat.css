@@ -262,6 +262,33 @@
     color: var(--accent-primary);
 }
 
+.thinking-summary {
+    background: var(--bg-primary);
+    border-radius: var(--border-radius-md);
+    padding: var(--space-sm) var(--space-md);
+    margin-bottom: var(--space-md);
+    border: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+
+.thinking-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-xs);
+}
+
+.thinking-content {
+    color: var(--text-secondary);
+    font-style: italic;
+    line-height: 1.5;
+}
+
 /* Thinking message */
 .thinking-message {
     display: flex;

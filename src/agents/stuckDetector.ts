@@ -9,6 +9,15 @@ interface StuckDetectorConfig {
     onIdleDetected: () => void;
 }
 
+// Adaptive Difficulty Engine - tracks struggle and adjusts hint specificity
+interface AdaptiveHintState {
+    currentTopic: string;
+    hintRequestCount: number;
+    firstHintTime: number;
+    lastHintTime: number;
+    struggleLevel: 'minimal' | 'moderate' | 'significant' | 'severe';
+}
+
 const DEFAULT_CONFIG: StuckDetectorConfig = {
     stuckThresholdMs: 5 * 60 * 1000, // 5 minutes
     errorRepeatThreshold: 3,
@@ -27,6 +36,15 @@ class StuckDetectorAgent {
     private currentFile: string = '';
     private currentLine: number = 0;
     private isRunning: boolean = false;
+
+    // Adaptive Difficulty Engine state
+    private adaptiveState: AdaptiveHintState = {
+        currentTopic: '',
+        hintRequestCount: 0,
+        firstHintTime: 0,
+        lastHintTime: 0,
+        struggleLevel: 'minimal'
+    };
 
     constructor(config: Partial<StuckDetectorConfig> = {}) {
         this.config = { ...DEFAULT_CONFIG, ...config };
@@ -166,15 +184,122 @@ class StuckDetectorAgent {
         this.errorHistory.clear();
     }
 
+    // =========================================================================
+    // ADAPTIVE DIFFICULTY ENGINE
+    // =========================================================================
+
+    /**
+     * Record a hint request - increases hint specificity over time
+     * Call this when user asks for help on a topic
+     */
+    recordHintRequest(topic?: string): void {
+        const now = Date.now();
+        const normalizedTopic = (topic || this.currentFile || 'general').toLowerCase();
+
+        // Reset if switching to new topic
+        if (normalizedTopic !== this.adaptiveState.currentTopic) {
+            this.adaptiveState = {
+                currentTopic: normalizedTopic,
+                hintRequestCount: 1,
+                firstHintTime: now,
+                lastHintTime: now,
+                struggleLevel: 'minimal'
+            };
+            return;
+        }
+
+        // Same topic - increment
+        this.adaptiveState.hintRequestCount++;
+        this.adaptiveState.lastHintTime = now;
+
+        // Calculate struggle level based on hints + time
+        const struggleDuration = now - this.adaptiveState.firstHintTime;
+        const minutesStrugging = struggleDuration / (1000 * 60);
+
+        if (this.adaptiveState.hintRequestCount >= 5 || minutesStrugging > 15) {
+            this.adaptiveState.struggleLevel = 'severe';
+        } else if (this.adaptiveState.hintRequestCount >= 3 || minutesStrugging > 8) {
+            this.adaptiveState.struggleLevel = 'significant';
+        } else if (this.adaptiveState.hintRequestCount >= 2 || minutesStrugging > 3) {
+            this.adaptiveState.struggleLevel = 'moderate';
+        } else {
+            this.adaptiveState.struggleLevel = 'minimal';
+        }
+    }
+
+    /**
+     * Get the recommended hint level (1-5) based on struggle
+     * 1 = Very vague, 5 = Very specific
+     */
+    getAdaptiveHintLevel(): number {
+        const { hintRequestCount, struggleLevel } = this.adaptiveState;
+
+        // Base level from hint count (each hint gets more specific)
+        let level = Math.min(hintRequestCount, 5);
+
+        // Boost based on struggle severity
+        switch (struggleLevel) {
+            case 'severe':
+                level = Math.max(level, 4); // At least level 4
+                break;
+            case 'significant':
+                level = Math.max(level, 3); // At least level 3
+                break;
+            case 'moderate':
+                level = Math.max(level, 2); // At least level 2
+                break;
+        }
+
+        return Math.min(Math.max(level, 1), 5); // Clamp 1-5
+    }
+
+    /**
+     * Get context string for AI about student's struggle level
+     */
+    getStruggleContext(): string {
+        const { hintRequestCount, struggleLevel } = this.adaptiveState;
+        const timeSinceFirst = this.adaptiveState.firstHintTime
+            ? Math.round((Date.now() - this.adaptiveState.firstHintTime) / 60000)
+            : 0;
+
+        if (struggleLevel === 'severe') {
+            return `IMPORTANT: Student has been struggling for ${timeSinceFirst} minutes and asked ${hintRequestCount} times for help. They need more concrete guidance but still not the direct answer.`;
+        } else if (struggleLevel === 'significant') {
+            return `Student has asked ${hintRequestCount} times for help over ${timeSinceFirst} minutes. Provide clearer direction while maintaining the Socratic approach.`;
+        } else if (struggleLevel === 'moderate') {
+            return `Student asked for help ${hintRequestCount} times. Some additional guidance is appropriate.`;
+        }
+        return 'First time asking about this topic - keep hints conceptual.';
+    }
+
+    /**
+     * Reset adaptive state (call when student successfully solves problem)
+     */
+    resetAdaptiveState(): void {
+        this.adaptiveState = {
+            currentTopic: '',
+            hintRequestCount: 0,
+            firstHintTime: 0,
+            lastHintTime: 0,
+            struggleLevel: 'minimal'
+        };
+    }
+
     getStats(): {
         timeSinceLastChange: number;
         uniqueErrors: number;
         isStuck: boolean;
+        adaptiveHintLevel: number;
+        struggleLevel: string;
+        hintRequestCount: number;
     } {
         return {
             timeSinceLastChange: Date.now() - this.lastChangeTime,
             uniqueErrors: this.errorHistory.size,
             isStuck: Date.now() - this.lastChangeTime > this.config.stuckThresholdMs,
+            adaptiveHintLevel: this.getAdaptiveHintLevel(),
+            struggleLevel: this.adaptiveState.struggleLevel,
+            hintRequestCount: this.adaptiveState.hintRequestCount
         };
     }
 }

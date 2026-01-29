@@ -1,0 +1,339 @@
+/* ExplainItBack Component Styles */
+
+.explain-it-back-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.explain-it-back-modal {
+    background: var(--bg-secondary);
+    border-radius: 16px;
+    width: 90%;
+    max-width: 700px;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.explain-it-back-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary, #8b5cf6));
+    border-radius: 16px 16px 0 0;
+    color: white;
+}
+
+.explain-it-back-header h2 {
+    flex: 1;
+    margin: 0;
+    font-size: 1.3rem;
+}
+
+.explain-it-back-header .close-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 1.4rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.explain-it-back-header .close-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Explain Phase */
+.explain-phase {
+    padding: 24px;
+}
+
+.prompt-section {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.prompt-text {
+    font-size: 1.1rem;
+    margin: 0 0 8px;
+}
+
+.prompt-subtext {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.code-preview {
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.code-label {
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.code-preview pre {
+    margin: 0;
+    padding: 12px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    max-height: 150px;
+}
+
+.code-preview code {
+    font-family: 'Fira Code', monospace;
+}
+
+.explanation-input {
+    width: 100%;
+    padding: 16px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    resize: vertical;
+    min-height: 150px;
+    transition: border-color 0.2s;
+}
+
+.explanation-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.explanation-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.submit-btn,
+.done-btn,
+.try-again-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.submit-btn {
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary, #8b5cf6));
+    color: white;
+    border: none;
+}
+
+.submit-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(var(--accent-primary-rgb, 99, 102, 241), 0.4);
+}
+
+.submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.done-btn {
+    background: var(--accent-success);
+    color: white;
+    border: none;
+}
+
+.done-btn:hover {
+    transform: translateY(-2px);
+}
+
+.try-again-btn {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.try-again-btn:hover {
+    background: var(--bg-primary);
+}
+
+/* Result Phase */
+.result-phase {
+    padding: 24px;
+}
+
+.understanding-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px;
+    border: 3px solid;
+    border-radius: 12px;
+    background: var(--bg-tertiary);
+    margin-bottom: 24px;
+}
+
+.understanding-badge .emoji {
+    font-size: 3rem;
+}
+
+.understanding-badge .level {
+    font-weight: 700;
+    font-size: 1.2rem;
+    letter-spacing: 1px;
+}
+
+.feedback-section {
+    margin-bottom: 20px;
+}
+
+.feedback-section h3 {
+    margin: 0 0 12px;
+    font-size: 1.2rem;
+}
+
+.feedback-content {
+    background: var(--bg-tertiary);
+    padding: 16px;
+    border-radius: 8px;
+    line-height: 1.6;
+}
+
+.feedback-content p {
+    margin: 0 0 12px;
+}
+
+.feedback-content p:last-child {
+    margin-bottom: 0;
+}
+
+.concepts-section {
+    margin-bottom: 16px;
+}
+
+.concepts-section h4 {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+}
+
+.concept-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.concept-tag {
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.concept-tag.covered {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--accent-success);
+    border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.concept-tag.missed {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--accent-warning);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.followup-section {
+    background: var(--bg-tertiary);
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.followup-section h4 {
+    margin: 0 0 12px;
+}
+
+.followup-section ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.followup-section li {
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+.followup-section li:last-child {
+    margin-bottom: 0;
+}
+
+/* Spinning animation */
+.spinning {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}

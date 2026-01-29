@@ -58,6 +58,15 @@ export const TeachingChat: React.FC<TeachingChatProps> = ({
                     </div>
                     <div className="message-content">
                         <div className="message-text markdown-content">
+                            {interaction.thinkingSummary && (
+                                <div className="thinking-summary">
+                                    <div className="thinking-label">
+                                        <Lightbulb size={12} />
+                                        <span>Thinking Process</span>
+                                    </div>
+                                    <div className="thinking-content">{interaction.thinkingSummary}</div>
+                                </div>
+                            )}
                             <ReactMarkdown>{interaction.aiResponse}</ReactMarkdown>
                         </div>
                         {interaction.highlightedLines && interaction.highlightedLines.length > 0 && (
@@ -112,7 +121,9 @@ export const TeachingChat: React.FC<TeachingChatProps> = ({
                 ) : (
                     <>
                         {interactions.map(renderMessage)}
-                        {isLoading && (
+
+                        {/* active response being streamed */}
+                        {isLoading && !interactions.find(i => i.isStreaming) && (
                             <div className="message ai-message loading">
                                 <div className="message-avatar">
                                     <RefreshCw size={16} className="spinning" />

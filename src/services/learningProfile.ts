@@ -111,6 +111,29 @@ export const addTopicProgress = async (
     await saveProfile(profile);
 };
 
+
+
+// Import profile
+export const importProfile = async (jsonData: string): Promise<void> => {
+    try {
+        const profile = JSON.parse(jsonData) as LearningProfile;
+        // Basic validation
+        if (!profile.id || !Array.isArray(profile.topics) || !Array.isArray(profile.weaknesses)) {
+            throw new Error('Invalid profile format');
+        }
+
+        // Ensure dates are parsed correctly if they are strings
+        if (typeof profile.lastSessionAt === 'string') profile.lastSessionAt = new Date(profile.lastSessionAt);
+        if (typeof profile.createdAt === 'string') profile.createdAt = new Date(profile.createdAt);
+
+        // Save imported profile (overwrites 'default' if that matches, or adds new)
+        await saveProfile(profile);
+    } catch (error) {
+        console.error('Failed to import profile:', error);
+        throw error;
+    }
+};
+
 // Session operations
 export const saveSession = async (session: CodingSession): Promise<void> => {
     if (!db) await initializeDatabase();

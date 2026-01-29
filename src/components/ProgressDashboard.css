@@ -252,3 +252,19 @@
     text-align: center;
     padding: var(--space-lg);
 }
+
+.icon-btn {
+    padding: var(--space-xs) var(--space-md);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.icon-btn:hover {
+    background: var(--bg-elevated);
+    border-color: var(--accent-primary);
+}

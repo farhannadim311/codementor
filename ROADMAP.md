@@ -2,7 +2,7 @@
 
 **Hackathon Deadline:** February 9, 2026, 5 PM PT  
 **Start Date:** January 4, 2026  
-**Last Updated:** January 4, 2026
+**Last Updated:** January 27, 2026
 
 ---
 
@@ -31,44 +31,66 @@
 - ✅ Preserves directory structure
 - ✅ Auto-skips node_modules + binary files
 
+### Phase 4: PDF Parsing + AI Context
+- ✅ Parse PDF text using pdf.js
+- ✅ Extract assignment requirements from PDF
+- ✅ Pass PDF content to AI for context
+- ✅ AI understands full assignment details
+
+### Phase 5: Smart Nudge System
+- ✅ Track code changes in real-time (debounced)
+- ✅ Detect syntax errors via Monaco
+- ✅ Implement "stuck detection" (no progress + errors)
+- ✅ Proactive nudge: "I noticed you're stuck on line X..."
+- ✅ Let user dismiss or request progressive hints
+
+### Phase 6: Gemini 3 Upgrade 🚀 NEW
+- ✅ **Interactions API** - Stateful multi-turn conversations
+- ✅ **Thinking Levels** - Dynamic reasoning (high for complex, low for chat)
+- ✅ **Streaming Responses** - Real-time SSE streaming + Thinking Summaries
+- ✅ **Media Resolution** - Optimal settings for screenshots/PDFs
+- ✅ **Google Search Tool** - Built-in documentation lookup
+- ✅ **Session Management** - Conversation continuity with IDs
+
+### Phase 7: Interactive Terminal & File System 🖥️ NEW
+- ✅ **VS Code-style integrated terminal**
+- ✅ **Real shell sessions** (bash/zsh)
+- ✅ **Local File System Sync** (Edits save to ~/CodeMentorProjects)
+- ✅ **File Manager** (Real-time file browsing)
+- ✅ **Command input with history** (↑/↓ arrows)
+- ✅ **ANSI color code support** (colored output)
+
+### Phase 8: Learning Profile & Analytics 📊 NEW
+- ✅ **Automated Time Tracking** (Tracks coding time per language)
+- ✅ **Progress Dashboard** (Visualizes streaks, total time, topics)
+- ✅ **Data Persistence** (Saves profile to IndexedDB)
+- ✅ **Export/Import** (JSON backup/restore of learning data)
+- ✅ **Smart Nudge Verification** (Stuck detector triggers help popup)
+
 ---
 
 ## 🚧 In Progress / Next Steps
 
-### Priority 1: PDF Parsing + AI Context (High Impact) ✅
-- [x] Parse PDF text using pdf.js
-- [x] Extract assignment requirements from PDF
-- [x] Pass PDF content to AI for context
-- [x] AI understands full assignment details
+### Phase 9: Weakness Detection & Skill Analysis 🧠 NEW
+- ✅ **Automated Detection** (Connects `weaknessDetector.ts` to backend)
+- ✅ **Recurring Error Analysis** (Identifies patterns from session history)
+- ✅ **Skill Visualization** (Radar/Bar charts for skill balance)
+- ✅ **Strengths Recognition** (Identifies and highlights mastered concepts)
+- ✅ **Smart Resolution** (Auto-removes weaknesses when improved)
+- ✅ **Manual Control** (Sleek "Are you sure?" modal for removing items)
 
-### Priority 2: Smart Nudge System ✅
-- [x] Track code changes in real-time (debounced)
-- [x] Detect syntax errors via Monaco
-- [x] Implement "stuck detection" (no progress + errors)
-- [x] Proactive nudge: "I noticed you're stuck on line X..."
-- [x] Let user dismiss or request progressive hints
+---
 
-### Priority 3: Code Execution
-- [ ] JavaScript execution in browser sandbox
-- [ ] Python execution via Pyodide/WebAssembly
-- [ ] Display output/errors in terminal panel
-- [ ] AI sees runtime errors and helps debug
+## 🚧 In Progress / Next Steps
+
+### Priority 1: Curriculum Generation
+- [ ] Generate personalized learning paths
+- [ ] Adaptive difficulty based on performance
+- [ ] Topic-specific exercises
 
 ---
 
 ## 📋 Feature Backlog
-
-### Learning Profile System
-- [ ] Test IndexedDB profile persistence
-- [ ] Track time spent on topics
-- [ ] Display profile stats in Progress Dashboard
-- [ ] Export/import learning profiles
-
-### Weakness Detection
-- [ ] Analyze coding patterns with Gemini
-- [ ] Identify weak areas automatically
-- [ ] Suggest targeted practice
-- [ ] Track improvement over time
 
 ### Curriculum Generation
 - [ ] Generate personalized learning paths
@@ -80,18 +102,19 @@
 ## 🏗️ Architecture Overview
 
 ```
-codementor/
+codementor/seems 
 ├── server/           # Backend API
-│   └── index.ts      # Express + Gemini endpoints
+│   └── index.ts      # Express + Gemini 3 Interactions API
 ├── src/
 │   ├── components/   # React components
 │   │   ├── MonacoEditor.tsx    # VS Code-like editor
+│   │   ├── Terminal.tsx        # Interactive shell terminal
 │   │   ├── FileManager.tsx     # File tree sidebar
 │   │   ├── GitHubClone.tsx     # Clone repo modal
 │   │   ├── TeachingChat.tsx    # Chat interface
 │   │   └── PdfViewer.tsx       # PDF display
 │   ├── services/     # API & storage
-│   │   ├── gemini.ts           # Backend API calls
+│   │   ├── gemini.ts           # Interactions API + Shell client
 │   │   ├── fileStorage.ts      # IndexedDB persistence
 │   │   └── github.ts           # GitHub API
 │   └── agents/       # AI agents
@@ -126,6 +149,20 @@ npm run server   # Backend (Express)
 
 1. **Clone a GitHub repo** → Shows VS Code-like file explorer
 2. **Upload assignment PDF** → Opens in tab, AI has context
-3. **Ask for help** → Socratic teaching, progressive hints
-4. **File persistence** → Refresh browser, files remain
-5. **Multi-file editing** → Tab switching, syntax highlighting
+3. **Ask for help** → Socratic teaching with streaming responses
+4. **Interactive Terminal** → Run `npm install`, `git`, etc like VS Code
+5. **File persistence** → Refresh browser, files remain
+6. **Multi-file editing** → Tab switching, syntax highlighting
+
+---
+
+## 🔧 Gemini 3 API Features Used
+
+| Feature | Usage |
+|---------|-------|
+| **Interactions API** | Stateful conversations with `previousInteractionId` |
+| **Thinking Levels** | `high` for debugging, `low` for chat |
+| **Streaming** | Real-time responses via SSE |
+| **Media Resolution** | `high` for screenshots, `medium` for PDFs |
+| **Google Search** | Built-in documentation lookup |
+| **Session Management** | Conversation continuity across turns |

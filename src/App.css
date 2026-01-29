@@ -268,6 +268,22 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.editor-main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.terminal-panel {
+  height: 220px;
+  min-height: 100px;
+  flex-shrink: 0;
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
 }
 
 .chat-panel {
