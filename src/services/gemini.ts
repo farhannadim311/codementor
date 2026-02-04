@@ -383,6 +383,118 @@ export const executeCode = async (
 };
 
 // =============================================================================
+// AI-POWERED TOPIC EXTRACTION
+// =============================================================================
+
+export const extractTopicsWithAI = async (text: string): Promise<string[]> => {
+    if (!text || text.length < 50) {
+        return [];
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/extract-topics`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+        });
+
+        if (!response.ok) {
+            return [];
+        }
+
+        const data = await response.json();
+        return data.topics || [];
+    } catch (error) {
+        console.error('Topic extraction failed:', error);
+        return [];
+    }
+};
+
+// =============================================================================
+// EXERCISE GENERATION & VALIDATION
+// =============================================================================
+
+export interface GeneratedExercise {
+    id: string;
+    title: string;
+    description: string;
+    starterCode: string;
+    testCases: Array<{
+        input: string;
+        expectedOutput: string;
+        isHidden: boolean;
+        explanation?: string;
+    }>;
+    hints: Array<{ level: number; content: string }>;
+    topic: string;
+    difficulty: string;
+    language: string;
+    solutionApproach?: string;
+    timeComplexity?: string;
+    spaceComplexity?: string;
+}
+
+export interface ValidationResult {
+    results: Array<{
+        testCaseId: number;
+        input: string;
+        expectedOutput: string;
+        actualOutput: string;
+        passed: boolean;
+        error?: string;
+        isHidden: boolean;
+    }>;
+    passedCount: number;
+    totalCount: number;
+    allPassed: boolean;
+    feedback: string;
+    score: number;
+}
+
+// Generate a LeetCode-style exercise for a specific weakness
+export const generateExercise = async (
+    topic: string,
+    difficulty: 'easy' | 'medium' | 'hard' = 'medium',
+    weaknessContext?: string,
+    language: string = 'javascript',
+    userCodeSamples?: string // User's recent code for personalization
+): Promise<GeneratedExercise> => {
+    const response = await fetch(`${API_BASE_URL}/api/generate-exercise`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, difficulty, weaknessContext, language, userCodeSamples }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate exercise');
+    }
+
+    return response.json();
+};
+
+// Validate user's solution against test cases
+export const validateExercise = async (
+    code: string,
+    testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean }>,
+    language: string = 'javascript',
+    exerciseId?: string
+): Promise<ValidationResult> => {
+    const response = await fetch(`${API_BASE_URL}/api/validate-exercise`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, testCases, language, exerciseId }),
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to validate exercise');
+    }
+
+    return response.json();
+};
+
+// =============================================================================
 // LEGACY COMPATIBILITY
 // =============================================================================
 

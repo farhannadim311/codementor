@@ -104,6 +104,43 @@ export interface Exercise {
   hints: Hint[];
   completed: boolean;
   attempts: number;
+  // New fields for LeetCode-style mode
+  title?: string;
+  description?: string;
+  starterCode?: string;
+  testCases?: TestCase[];
+  topic?: string;
+  language?: string;
+  solutionApproach?: string;
+  timeComplexity?: string;
+  spaceComplexity?: string;
+}
+
+export interface TestCase {
+  id?: string;
+  input: string;
+  expectedOutput: string;
+  isHidden: boolean;
+  explanation?: string;
+}
+
+export interface ExerciseResult {
+  testCaseId: number;
+  input: string;
+  expectedOutput: string;
+  actualOutput: string;
+  passed: boolean;
+  error?: string;
+  isHidden: boolean;
+}
+
+export interface ExerciseValidation {
+  results: ExerciseResult[];
+  passedCount: number;
+  totalCount: number;
+  allPassed: boolean;
+  feedback: string;
+  score: number;
 }
 
 export interface TeachingMode {
@@ -112,3 +149,4 @@ export interface TeachingMode {
   allowPseudocode: boolean;
   allowVisuals: boolean;
 }
+

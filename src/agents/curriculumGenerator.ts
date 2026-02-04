@@ -63,11 +63,59 @@ class CurriculumGeneratorAgent {
         return curriculum;
     }
 
-    // Generate a quick exercise for immediate practice
+    // Generate a quick exercise for immediate practice using AI
     async generateQuickExercise(topic: string, difficulty: 'easy' | 'medium' | 'hard'): Promise<Exercise> {
+        try {
+            // Use the AI-powered exercise generation endpoint
+            const { generateExercise } = await import('../services/gemini');
+            const generatedExercise = await generateExercise(topic, difficulty);
+
+            // Convert to our Exercise type
+            // Map hints with proper type casting (API returns number, we need 1|2|3|4|5)
+            const defaultHints: Array<{ level: 1 | 2 | 3 | 4 | 5; content: string }> = [
+                { level: 1, content: 'Think about the basic approach first.' },
+                { level: 2, content: 'Consider what data structures might help.' },
+                { level: 3, content: 'Break the problem into smaller steps.' },
+            ];
+
+            const mappedHints = generatedExercise.hints?.map(h => ({
+                level: Math.min(Math.max(h.level, 1), 5) as 1 | 2 | 3 | 4 | 5,
+                content: h.content,
+            })) || defaultHints;
+
+            const exercise: Exercise = {
+                id: generatedExercise.id || `quick_${Date.now()}`,
+                prompt: generatedExercise.description || generatedExercise.title,
+                difficulty,
+                hints: mappedHints,
+                completed: false,
+                attempts: 0,
+                // Extended properties from AI
+                title: generatedExercise.title,
+                description: generatedExercise.description,
+                starterCode: generatedExercise.starterCode,
+                testCases: generatedExercise.testCases,
+                topic: generatedExercise.topic,
+                language: generatedExercise.language,
+                solutionApproach: generatedExercise.solutionApproach,
+                timeComplexity: generatedExercise.timeComplexity,
+                spaceComplexity: generatedExercise.spaceComplexity,
+            };
+
+            this.onExerciseReady(exercise);
+            return exercise;
+        } catch (error) {
+            console.error('AI exercise generation failed, using fallback:', error);
+            // Fallback to basic exercise if AI fails
+            return this.generateFallbackExercise(topic, difficulty);
+        }
+    }
+
+    // Fallback exercise generation (only used if AI fails)
+    private generateFallbackExercise(topic: string, difficulty: 'easy' | 'medium' | 'hard'): Exercise {
         const exercise: Exercise = {
             id: `quick_${Date.now()}`,
-            prompt: '', // Will be filled by Gemini
+            prompt: `Practice exercise for ${topic}: Write a solution that demonstrates your understanding of ${topic}.`,
             difficulty,
             hints: [
                 { level: 1, content: 'Think about the basic approach first.' },
@@ -77,35 +125,6 @@ class CurriculumGeneratorAgent {
             completed: false,
             attempts: 0,
         };
-
-        // In real implementation, use Gemini to generate the prompt
-        // For now, use a template
-        const templates: Record<string, string[]> = {
-            loops: [
-                'Write a function that sums all numbers from 1 to n.',
-                'Create a function that finds the largest number in an array.',
-                'Implement a function that reverses a string.',
-            ],
-            arrays: [
-                'Write a function that removes duplicates from an array.',
-                'Create a function that merges two sorted arrays.',
-                'Implement a function that rotates an array by k positions.',
-            ],
-            recursion: [
-                'Write a recursive function to calculate factorial.',
-                'Create a recursive function to find the nth Fibonacci number.',
-                'Implement a recursive function to reverse a linked list.',
-            ],
-            functions: [
-                'Write a higher-order function that applies a callback to each array element.',
-                'Create a function that returns another function (closure).',
-                'Implement a memoization wrapper function.',
-            ],
-        };
-
-        const topicTemplates = templates[topic.toLowerCase()] || templates['loops'];
-        const randomIndex = Math.floor(Math.random() * topicTemplates.length);
-        exercise.prompt = topicTemplates[randomIndex];
 
         this.onExerciseReady(exercise);
         return exercise;

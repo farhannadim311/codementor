@@ -37,12 +37,14 @@ import './ProgressDashboard.css';
 interface ProgressDashboardProps {
     profile: LearningProfile | null;
     onStartPractice?: (topic: string, prompt?: string) => void;
+    onAskAboutTopic?: (topic: string) => void;
     onProfileUpdate?: () => void;
 }
 
 export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
     profile,
     onStartPractice,
+    onAskAboutTopic,
     onProfileUpdate,
 }) => {
     const [streakDays, setStreakDays] = useState(0);
@@ -477,7 +479,7 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <button
                                                 className="practice-btn"
-                                                onClick={() => onStartPractice?.(weakness.topic)}
+                                                onClick={() => onAskAboutTopic?.(weakness.topic)}
                                                 style={{
                                                     fontSize: '0.75rem',
                                                     padding: '4px 12px',
@@ -526,6 +528,8 @@ export const ProgressDashboard: React.FC<ProgressDashboardProps> = ({
             <div className="section">
                 <CurriculumView
                     weaknesses={profile.weaknesses}
+                    totalSessions={profile.totalSessions}
+                    totalCodingTime={profile.totalCodingTime}
                     onStartPractice={onStartPractice}
                 />
             </div>

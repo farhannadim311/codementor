@@ -36,6 +36,41 @@
     color: var(--text-primary);
 }
 
+.nudge-header-actions {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.nudge-header-actions .nudge-close {
+    position: static;
+}
+
+.nudge-voice-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.nudge-voice-toggle:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.nudge-voice-toggle.active {
+    color: var(--accent-primary);
+}
+
 .nudge-icon {
     font-size: 2rem;
     text-align: center;
@@ -101,6 +136,17 @@
 .nudge-btn.secondary:hover {
     background: rgba(255, 255, 255, 0.05);
     color: var(--text-primary);
+}
+
+.nudge-btn.voice {
+    background: linear-gradient(135deg, #8b5cf6, #a855f7);
+    border: none;
+    color: white;
+}
+
+.nudge-btn.voice:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
 }
 
 .nudge-btn.primary {

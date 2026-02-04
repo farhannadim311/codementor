@@ -1,8 +1,18 @@
 // CodeReviewMode Component - AI-powered code review with probing questions
-import { useState } from 'react';
-import { Code2, MessageCircle, Loader, ChevronDown, ChevronRight, AlertTriangle, Lightbulb, CheckCircle2 } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Code2, MessageCircle, Loader, ChevronDown, ChevronRight, AlertTriangle, Lightbulb, CheckCircle2, FileCode, Volume2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { useVoiceSettings } from '../contexts/VoiceSettingsContext';
+import { speak, stop } from '../services/voiceService';
 import './CodeReviewMode.css';
+
+interface FileItem {
+    id: string;
+    name: string;
+    content: string;
+    type?: 'code' | 'output' | 'pdf' | 'image';
+    language: string;
+}
 
 interface CodeReviewModeProps {
     isOpen: boolean;
@@ -10,6 +20,8 @@ interface CodeReviewModeProps {
     code: string;
     language: string;
     fileName: string;
+    files?: FileItem[];
+    activeFileId?: string;
     onHighlightLines?: (lines: number[]) => void;
 }
 
@@ -40,12 +52,38 @@ export const CodeReviewMode: React.FC<CodeReviewModeProps> = ({
     code,
     language,
     fileName,
+    files = [],
+    activeFileId,
     onHighlightLines,
 }) => {
     const [isReviewing, setIsReviewing] = useState(false);
     const [result, setResult] = useState<ReviewResult | null>(null);
     const [expandedFeedback, setExpandedFeedback] = useState<Set<number>>(new Set());
     const [phase, setPhase] = useState<'start' | 'reviewing' | 'result'>('start');
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const { voiceEnabled } = useVoiceSettings();
+
+    // File selection state
+    const [selectedFileId, setSelectedFileId] = useState<string>(activeFileId || '');
+
+    // Get code files only
+    const codeFiles = useMemo(() => files.filter(f => f.type === 'code'), [files]);
+
+    // Get selected file's code and details
+    const selectedFile = useMemo(() =>
+        codeFiles.find(f => f.id === selectedFileId) || codeFiles[0],
+        [codeFiles, selectedFileId]);
+
+    const currentCode = selectedFile?.content || code;
+    const currentLanguage = selectedFile?.language || language;
+    const currentFileName = selectedFile?.name || fileName;
+
+    // Update selection when activeFileId changes
+    useEffect(() => {
+        if (activeFileId && isOpen) {
+            setSelectedFileId(activeFileId);
+        }
+    }, [activeFileId, isOpen]);
 
     const handleStartReview = async () => {
         setIsReviewing(true);
@@ -56,9 +94,9 @@ export const CodeReviewMode: React.FC<CodeReviewModeProps> = ({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    code,
-                    language,
-                    fileName,
+                    code: currentCode,
+                    language: currentLanguage,
+                    fileName: currentFileName,
                 }),
             });
 
@@ -108,7 +146,31 @@ export const CodeReviewMode: React.FC<CodeReviewModeProps> = ({
         setResult(null);
         setPhase('start');
         setExpandedFeedback(new Set());
+        stop();
         onClose();
+    };
+
+    const handleListenToReview = async () => {
+        if (!result) return;
+        setIsSpeaking(true);
+
+        // Build text to speak
+        let textToSpeak = `Code review complete. Overall quality: ${result.overallQuality.replace('-', ' ')}. `;
+        textToSpeak += result.summary + ' ';
+
+        if (result.strengths.length > 0) {
+            textToSpeak += 'What you did well: ' + result.strengths.join('. ') + '. ';
+        }
+
+        if (result.feedback.length > 0) {
+            textToSpeak += `There are ${result.feedback.length} items to review. `;
+        }
+
+        try {
+            await speak(textToSpeak, 'tutor', true);
+        } finally {
+            setIsSpeaking(false);
+        }
     };
 
     if (!isOpen) return null;
@@ -146,7 +208,7 @@ export const CodeReviewMode: React.FC<CodeReviewModeProps> = ({
                 <div className="code-review-header">
                     <Code2 size={24} />
                     <h2>Code Review</h2>
-                    <span className="file-badge">{fileName}</span>
+                    <span className="file-badge">{currentFileName}</span>
                     <button className="close-btn" onClick={handleClose}>×</button>
                 </div>
 
@@ -168,9 +230,27 @@ export const CodeReviewMode: React.FC<CodeReviewModeProps> = ({
                             </ul>
                         </div>
 
+                        {/* File Selector */}
+                        {codeFiles.length > 1 && (
+                            <div className="file-selector">
+                                <label><FileCode size={14} /> Select file to review:</label>
+                                <select
+                                    value={selectedFileId}
+                                    onChange={(e) => setSelectedFileId(e.target.value)}
+                                    className="file-select"
+                                >
+                                    {codeFiles.map(file => (
+                                        <option key={file.id} value={file.id}>
+                                            {file.name} ({file.language})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
                         <div className="code-preview">
-                            <div className="code-label">{language} • {code.split('\n').length} lines</div>
-                            <pre><code>{code.substring(0, 400)}{code.length > 400 ? '...' : ''}</code></pre>
+                            <div className="code-label">{currentLanguage} • {currentCode.split('\n').length} lines</div>
+                            <pre><code>{currentCode.substring(0, 400)}{currentCode.length > 400 ? '...' : ''}</code></pre>
                         </div>
 
                         <button
@@ -183,6 +263,7 @@ export const CodeReviewMode: React.FC<CodeReviewModeProps> = ({
                         </button>
                     </div>
                 )}
+
 
                 {phase === 'reviewing' && (
                     <div className="reviewing-phase">
@@ -213,6 +294,14 @@ export const CodeReviewMode: React.FC<CodeReviewModeProps> = ({
                         {/* Summary */}
                         <div className="review-summary">
                             <ReactMarkdown>{result.summary}</ReactMarkdown>
+                            <button
+                                className="listen-btn"
+                                onClick={handleListenToReview}
+                                disabled={isSpeaking}
+                            >
+                                <Volume2 size={16} />
+                                {isSpeaking ? 'Speaking...' : 'Listen to Review'}
+                            </button>
                         </div>
 
                         {/* Strengths */}

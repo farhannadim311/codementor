@@ -1,6 +1,6 @@
 // Weakness Detector Agent - Analyzes patterns to identify learning gaps
 import type { Weakness, CodingSession, TopicProgress } from '../types';
-import { detectWeaknesses as geminiDetectWeaknesses } from '../services/gemini';
+import { detectWeaknesses as geminiDetectWeaknesses, extractTopicsWithAI } from '../services/gemini';
 import { getProfile, saveProfile, getRecentSessions } from '../services/learningProfile';
 
 interface WeaknessPattern {
@@ -17,6 +17,7 @@ class WeaknessDetectorAgent {
     private onWeaknessDetected: (weakness: Weakness) => void = () => { };
     private onStrengthDetected: (strength: string) => void = () => { };
     private onWeaknessResolved: (topic: string) => void = () => { };
+    private topicCache: Map<string, string[]> = new Map(); // Cache AI-extracted topics
 
     constructor() { }
 
@@ -56,8 +57,8 @@ class WeaknessDetectorAgent {
                 return [];
             }
 
-            // Build session history summary for Gemini
-            const sessionSummary = this.buildSessionSummary(sessions);
+            // Build session history summary for Gemini (AI-powered topic extraction)
+            const sessionSummary = await this.buildSessionSummary(sessions);
             const existingWeaknesses = profile?.weaknesses.map((w) => w.topic) || [];
 
             // Use Gemini to detect patterns
@@ -136,13 +137,13 @@ class WeaknessDetectorAgent {
 
         // Analyze interactions for repeated struggles
         const interactionTopics = new Map<string, number>();
-        session.interactions.forEach((interaction) => {
-            // Extract topics from AI responses (simplified)
-            const topics = this.extractTopics(interaction.aiResponse);
-            topics.forEach((topic) => {
+        for (const interaction of session.interactions) {
+            // Extract topics from AI responses using AI
+            const topics = await this.extractTopics(interaction.aiResponse);
+            topics.forEach((topic: string) => {
                 interactionTopics.set(topic, (interactionTopics.get(topic) || 0) + 1);
             });
-        });
+        }
 
         // Topics asked about multiple times indicate weakness
         interactionTopics.forEach((count, topic) => {
@@ -184,34 +185,46 @@ class WeaknessDetectorAgent {
         return 'low';
     }
 
-    private extractTopics(text: string): string[] {
-        // Simple topic extraction - in production, use Gemini for better extraction
-        const commonTopics = [
-            'loops',
-            'arrays',
-            'functions',
-            'recursion',
-            'variables',
-            'conditionals',
-            'objects',
-            'classes',
-            'async',
-            'promises',
-            'callbacks',
-            'closures',
-            'scope',
-            'types',
-            'debugging',
-            'algorithms',
-            'data structures',
-        ];
+    // AI-powered topic extraction with caching
+    private async extractTopics(text: string): Promise<string[]> {
+        // Check cache first
+        const cacheKey = text.slice(0, 100); // Use first 100 chars as key
+        if (this.topicCache.has(cacheKey)) {
+            return this.topicCache.get(cacheKey) || [];
+        }
 
+        // Use AI to extract topics
+        try {
+            const topics = await extractTopicsWithAI(text);
+            this.topicCache.set(cacheKey, topics);
+
+            // Limit cache size
+            if (this.topicCache.size > 100) {
+                const firstKey = this.topicCache.keys().next().value;
+                if (firstKey) this.topicCache.delete(firstKey);
+            }
+
+            return topics;
+        } catch (error) {
+            console.error('AI topic extraction failed:', error);
+            return this.extractTopicsFallback(text);
+        }
+    }
+
+    // Fallback to keyword matching if AI fails
+    private extractTopicsFallback(text: string): string[] {
+        const commonTopics = [
+            'loops', 'arrays', 'functions', 'recursion', 'variables',
+            'conditionals', 'objects', 'classes', 'async', 'promises',
+            'callbacks', 'closures', 'scope', 'types', 'debugging',
+            'algorithms', 'data structures',
+        ];
         const lowercaseText = text.toLowerCase();
         return commonTopics.filter((topic) => lowercaseText.includes(topic));
     }
 
-    private buildSessionSummary(sessions: CodingSession[]): string {
-        const summaries = sessions.map((session) => {
+    private async buildSessionSummary(sessions: CodingSession[]): Promise<string> {
+        const summaries = await Promise.all(sessions.map(async (session) => {
             const _duration = session.endTime
                 ? Math.round(
                     (new Date(session.endTime).getTime() - new Date(session.startTime).getTime()) /
@@ -227,17 +240,23 @@ Code Sample (${mainFile.filename}):
 ${mainFile.content.slice(0, 1000)}${mainFile.content.length > 1000 ? '...' : ''}
 \`\`\`` : '';
 
+            // Extract topics with AI for each interaction
+            const topicsByInteraction = await Promise.all(
+                session.interactions.map(async (i) => {
+                    const topics = await this.extractTopics(i.aiResponse);
+                    return topics.join(', ');
+                })
+            );
+
             return `
 Session on ${new Date(session.startTime).toLocaleDateString()}:
 - Files: ${session.files.map((f) => f.filename).join(', ') || 'unknown'}
 - Stuck moments: ${session.stuckMoments.length}
 - Help requests: ${session.interactions.length}
-- Topics discussed: ${session.interactions
-                    .map((i) => this.extractTopics(i.aiResponse).join(', '))
-                    .join('; ')}
+- Topics discussed: ${topicsByInteraction.join('; ')}
 ${codeSample}
       `.trim();
-        });
+        }));
 
         return summaries.join('\n\n');
     }

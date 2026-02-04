@@ -1,6 +1,7 @@
 // Voice Interface Component - Real-time voice interaction with Gemini
 import { useState, useRef, useEffect } from 'react';
 import { Mic, MicOff, Volume2, VolumeX, Loader } from 'lucide-react';
+import { speak, stop as stopVoice } from '../services/voiceService';
 import '../types/speech.d.ts';
 import './VoiceInterface.css';
 
@@ -134,34 +135,18 @@ export const VoiceInterface: React.FC<VoiceInterfaceProps> = ({
         setAudioLevel(0);
     };
 
-    const speakResponse = (text: string) => {
-        // Stop any ongoing speech
-        window.speechSynthesis.cancel();
-
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-
-        // Find a good voice
-        const voices = window.speechSynthesis.getVoices();
-        const preferredVoice = voices.find(
-            (v) => v.lang.startsWith('en') && v.name.includes('Google')
-        ) || voices.find((v) => v.lang.startsWith('en'));
-
-        if (preferredVoice) {
-            utterance.voice = preferredVoice;
+    const speakResponse = async (text: string) => {
+        // Use the centralized voice service for Gemini TTS
+        onSpeaking(true);
+        try {
+            await speak(text, 'tutor', true);
+        } finally {
+            onSpeaking(false);
         }
-
-        utterance.onstart = () => onSpeaking(true);
-        utterance.onend = () => onSpeaking(false);
-        utterance.onerror = () => onSpeaking(false);
-
-        synthRef.current = utterance;
-        window.speechSynthesis.speak(utterance);
     };
 
     const stopSpeaking = () => {
-        window.speechSynthesis.cancel();
+        stopVoice();
         onSpeaking(false);
     };
 

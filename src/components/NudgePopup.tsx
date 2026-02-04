@@ -1,5 +1,8 @@
 // Nudge Popup Component - Proactive help when student is stuck
-import { X, Lightbulb, ThumbsUp } from 'lucide-react';
+import { useEffect } from 'react';
+import { X, Lightbulb, ThumbsUp, Volume2, VolumeX } from 'lucide-react';
+import { useVoiceSettings } from '../contexts/VoiceSettingsContext';
+import { speak, stop } from '../services/voiceService';
 import './NudgePopup.css';
 
 interface NudgePopupProps {
@@ -19,7 +22,7 @@ export const NudgePopup: React.FC<NudgePopupProps> = ({
     onRequestHint,
     onDismiss,
 }) => {
-    if (!isVisible) return null;
+    const { voiceEnabled, toggleVoice } = useVoiceSettings();
 
     // Generate friendly message based on reason
     const getMessage = () => {
@@ -35,12 +38,40 @@ export const NudgePopup: React.FC<NudgePopupProps> = ({
         return "Looks like you might be stuck. Would you like some help?";
     };
 
+    // Stop speaking when popup is dismissed
+    useEffect(() => {
+        return () => {
+            stop();
+        };
+    }, [isVisible]);
+
+    if (!isVisible) return null;
+
+    const handleDismiss = () => {
+        stop();
+        onDismiss();
+    };
+
+    const handleRequestHint = () => {
+        stop();
+        onRequestHint();
+    };
+
     return (
         <div className="nudge-popup-container">
             <div className="nudge-popup animate-slide-in">
-                <button className="nudge-close" onClick={onDismiss} title="Dismiss">
-                    <X size={16} />
-                </button>
+                <div className="nudge-header-actions">
+                    <button
+                        className={`nudge-voice-toggle ${voiceEnabled ? 'active' : ''}`}
+                        onClick={toggleVoice}
+                        title={voiceEnabled ? 'Disable voice' : 'Enable voice'}
+                    >
+                        {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                    </button>
+                    <button className="nudge-close" onClick={handleDismiss} title="Dismiss">
+                        <X size={16} />
+                    </button>
+                </div>
 
                 <div className="nudge-icon">💡</div>
 
@@ -54,13 +85,23 @@ export const NudgePopup: React.FC<NudgePopupProps> = ({
                 </div>
 
                 <div className="nudge-actions">
-                    <button className="nudge-btn secondary" onClick={onDismiss}>
+                    <button className="nudge-btn secondary" onClick={handleDismiss}>
                         <ThumbsUp size={16} />
                         I'm Fine
                     </button>
-                    <button className="nudge-btn primary" onClick={onRequestHint}>
+                    <button className="nudge-btn primary" onClick={handleRequestHint}>
                         <Lightbulb size={16} />
-                        Get a Hint
+                        Text Hint
+                    </button>
+                    <button
+                        className="nudge-btn voice"
+                        onClick={() => {
+                            const message = getMessage();
+                            speak(message, 'helper', true);
+                        }}
+                    >
+                        <Volume2 size={16} />
+                        Voice Hint
                     </button>
                 </div>
             </div>

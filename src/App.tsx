@@ -25,6 +25,8 @@ import { ProgressDashboard } from './components/ProgressDashboard';
 import { Terminal, type TerminalOutput, type CompilerInfo } from './components/Terminal';
 import { ExplainItBack } from './components/ExplainItBack';
 import { CodeReviewMode } from './components/CodeReviewMode';
+import { ExerciseMode } from './components/ExerciseMode';
+import type { GeneratedExercise } from './services/gemini';
 import {
   checkBackendHealth,
   streamTeachingResponse,
@@ -55,7 +57,7 @@ import './types/speech.d.ts';
 import './styles/globals.css';
 import './App.css';
 
-type View = 'code' | 'chat' | 'progress';
+type View = 'code' | 'chat' | 'progress' | 'exercise';
 type Mode = 'voice' | 'text';
 
 function App() {
@@ -105,6 +107,66 @@ function App() {
 
   // Code Review modal state
   const [showCodeReview, setShowCodeReview] = useState(false);
+
+  // Exercise mode state
+  const [currentExercise, setCurrentExercise] = useState<GeneratedExercise | null>(null);
+  const [isGeneratingExercise, setIsGeneratingExercise] = useState(false);
+
+  // User-typed code tracking (for personalized AI analysis)
+  // Tracks code the user TYPES (not uploads/clones) to detect patterns
+  interface CodeSample {
+    code: string;
+    timestamp: Date;
+  }
+  interface UserCodeHistoryEntry {
+    fileId: string;
+    filename: string;
+    language: string;
+    samples: CodeSample[];
+    lastContentLength: number; // Track to detect typing vs upload
+  }
+  const [userCodeHistory, setUserCodeHistory] = useState<UserCodeHistoryEntry[]>([]);
+
+  // Track user typing (detect small incremental changes = typing, large changes = upload)
+  const trackUserCode = useCallback((fileId: string, filename: string, language: string, content: string) => {
+    setUserCodeHistory(prev => {
+      const existing = prev.find(h => h.fileId === fileId);
+
+      if (existing) {
+        const changeSize = Math.abs(content.length - existing.lastContentLength);
+        const isUserTyping = changeSize > 0 && changeSize < 200; // Small changes = typing
+
+        if (isUserTyping) {
+          // Track as user-typed code sample
+          const newSamples = [
+            ...existing.samples.slice(-9), // Keep last 10 samples
+            { code: content, timestamp: new Date() }
+          ];
+          return prev.map(h =>
+            h.fileId === fileId
+              ? { ...h, samples: newSamples, lastContentLength: content.length }
+              : h
+          );
+        } else {
+          // Large change (upload/paste) - just update length, don't track
+          return prev.map(h =>
+            h.fileId === fileId
+              ? { ...h, lastContentLength: content.length }
+              : h
+          );
+        }
+      } else {
+        // New file - start tracking
+        return [...prev, {
+          fileId,
+          filename,
+          language,
+          samples: [], // Don't capture initial content (might be uploaded)
+          lastContentLength: content.length
+        }];
+      }
+    });
+  }, []);
 
   // Initialize app
   useEffect(() => {
@@ -193,7 +255,26 @@ function App() {
         const isActive = stats && stats.timeSinceLastChange < 60000;
 
         if (isActive) {
-          saveSession(session);
+          // Sync user-typed code to session.files for AI analysis
+          const sessionFiles = userCodeHistory
+            .filter(h => h.samples.length > 0) // Only files with user-typed content
+            .map(h => {
+              const latestSample = h.samples[h.samples.length - 1];
+              return {
+                filename: h.filename,
+                language: h.language,
+                content: latestSample.code,
+                lastModified: latestSample.timestamp
+              };
+            });
+
+          // Update session with user-typed files
+          const updatedSession = {
+            ...session,
+            files: sessionFiles
+          };
+
+          saveSession(updatedSession);
 
           if (profile) {
             const updatedProfile = { ...profile };
@@ -229,7 +310,7 @@ function App() {
 
       return () => clearInterval(interval);
     }
-  }, [session, profile, files, activeFileId]);
+  }, [session, profile, files, activeFileId, userCodeHistory]);
 
   const handleStuckDetected = useCallback((moment: StuckMoment, reason: string) => {
     // Show nudge popup instead of just a notification
@@ -382,6 +463,9 @@ function App() {
   const handleFileChange = async (fileId: string, content: string) => {
     const updatedFile = files.find(f => f.id === fileId);
     if (updatedFile) {
+      // Track user-typed code for personalized AI analysis
+      trackUserCode(fileId, updatedFile.name, updatedFile.language, content);
+
       const newFile = { ...updatedFile, content, lastModified: new Date() };
       setFiles((prev) =>
         prev.map((f) => (f.id === fileId ? newFile : f))
@@ -640,59 +724,82 @@ Student's question: ${message}`;
     // Could trigger highlighting animation
   };
 
-  const handleStartPractice = (topic: string, prompt?: string) => {
-    showNotification('info', `Starting practice for: ${topic}`);
+  const handleStartPractice = async (topic: string, prompt?: string) => {
+    showNotification('info', `Generating personalized AI exercise for: ${topic}...`);
+    setIsGeneratingExercise(true);
 
-    // Create a new exercise file with starter code template
-    const sanitizedTopic = topic.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 20);
-    const timestamp = Date.now();
-    const exerciseFileName = `exercise_${sanitizedTopic}_${timestamp}.js`;
+    try {
+      // Detect dominant language from existing project files
+      const languageCounts = new Map<string, number>();
+      files.filter(f => f.type === 'code').forEach(f => {
+        const lang = f.language || 'javascript';
+        languageCounts.set(lang, (languageCounts.get(lang) || 0) + 1);
+      });
 
-    // Generate starter code template based on the topic
-    const starterCode = `/**
- * 🎯 Exercise: ${topic}
- * ${prompt ? `\n * Challenge: ${prompt}` : ''}
- * 
- * Instructions:
- * 1. Read the problem carefully
- * 2. Write your solution below
- * 3. Ask CodeMentor for hints if you get stuck!
- * 
- * Good luck! 💪
- */
+      // Find most common language, default to javascript
+      let detectedLanguage = 'javascript';
+      let maxCount = 0;
+      languageCounts.forEach((count, lang) => {
+        if (count > maxCount) {
+          maxCount = count;
+          detectedLanguage = lang;
+        }
+      });
 
-// TODO: Write your solution here
-function solution() {
-  // Your code goes here
-  
-}
+      // Get weakness context from profile
+      const weakness = profile?.weaknesses.find(w => w.topic.toLowerCase() === topic.toLowerCase());
+      const weaknessContext = weakness?.description || prompt || undefined;
 
-// Test your solution
-// solution();
-`;
+      // Dynamic difficulty based on user's skill level for this topic
+      let dynamicDifficulty: 'easy' | 'medium' | 'hard' = 'medium';
+      const topicProgress = profile?.topics.find(t =>
+        t.topic.toLowerCase().includes(topic.toLowerCase()) ||
+        topic.toLowerCase().includes(t.topic.toLowerCase())
+      );
+      if (topicProgress) {
+        // Adjust difficulty based on success rate
+        if (topicProgress.successRate >= 80) dynamicDifficulty = 'hard';
+        else if (topicProgress.successRate <= 40) dynamicDifficulty = 'easy';
+      } else if (weakness) {
+        // If it's a known weakness, start easier
+        dynamicDifficulty = 'easy';
+      }
 
-    // Create the new file
-    const newFile: FileItem = {
-      id: `exercise-${timestamp}`,
-      name: exerciseFileName,
-      content: starterCode,
-      type: 'code',
-      language: 'javascript',
-      lastModified: new Date(),
-    };
+      // Get user's recent code samples for AI context (personalization!)
+      const recentUserCode = userCodeHistory
+        .filter(h => h.samples.length > 0)
+        .flatMap(h => h.samples.slice(-2)) // Last 2 samples per file
+        .map(s => s.code.slice(0, 500)) // Limit size
+        .slice(0, 3) // Max 3 samples
+        .join('\n---\n');
 
-    setFiles(prevFiles => [...prevFiles, newFile]);
-    setActiveFileId(newFile.id);
+      // Generate AI exercise with personalized context
+      const { generateExercise } = await import('./services/gemini');
+      const exercise = await generateExercise(
+        topic,
+        dynamicDifficulty,
+        weaknessContext,
+        detectedLanguage,
+        recentUserCode // Pass user's actual code patterns
+      );
 
-    // Switch to editor view and then to chat
-    setCurrentView('chat');
-
-    // Send message to CodeMentor to start the exercise
-    if (prompt) {
-      handleSendMessage(`I've created a new file "${exerciseFileName}" for this exercise. The challenge is: "${prompt}". Please guide me step by step on how to approach this problem on ${topic}.`);
-    } else {
-      handleSendMessage(`I've created a new file "${exerciseFileName}" to practice ${topic}. Can you give me a problem to solve and guide me through it?`);
+      // Set the exercise and switch to exercise view
+      setCurrentExercise(exercise);
+      setCurrentView('exercise');
+      showNotification('success', `Exercise generated! Difficulty: ${dynamicDifficulty.toUpperCase()}`);
+    } catch (error) {
+      console.error('Failed to generate exercise:', error);
+      showNotification('error', 'Failed to generate exercise. Please try again.');
+    } finally {
+      setIsGeneratingExercise(false);
     }
+  };
+
+  // Handle asking about a topic (Focus Areas) - opens chat instead of exercise
+  const handleAskAboutTopic = (topic: string) => {
+    setCurrentView('chat');
+    // Send a contextual message to the AI
+    handleSendMessage(`I need help understanding ${topic}. Can you explain the key concepts and give me some tips for improving in this area?`);
   };
 
   const handleRetryConnection = async () => {
@@ -978,12 +1085,31 @@ function solution() {
               <ProgressDashboard
                 profile={profile}
                 onStartPractice={handleStartPractice}
+                onAskAboutTopic={handleAskAboutTopic}
                 onProfileUpdate={async () => {
                   const updated = await getProfile();
                   if (updated) setProfile(updated);
                 }}
               />
             </div>
+          )}
+
+          {currentView === 'exercise' && currentExercise && (
+            <ExerciseMode
+              exercise={currentExercise}
+              onClose={() => {
+                setCurrentExercise(null);
+                setCurrentView('progress');
+              }}
+              onComplete={(passed, score) => {
+                if (passed) {
+                  showNotification('success', `🎉 Exercise completed with ${score}% score!`);
+                  // Could update profile here to mark weakness as addressed
+                }
+                setCurrentExercise(null);
+                setCurrentView('progress');
+              }}
+            />
           )}
         </div>
       </main>
@@ -1014,6 +1140,8 @@ function solution() {
         onClose={() => setShowExplainItBack(false)}
         code={files.find(f => f.id === activeFileId)?.content || ''}
         language={files.find(f => f.id === activeFileId)?.language || 'javascript'}
+        files={files}
+        activeFileId={activeFileId || undefined}
         onValidationComplete={(passed, _feedback) => {
           if (passed) {
             showNotification('success', '🎉 Great understanding demonstrated!');
@@ -1032,6 +1160,8 @@ function solution() {
         code={files.find(f => f.id === activeFileId)?.content || ''}
         language={files.find(f => f.id === activeFileId)?.language || 'javascript'}
         fileName={files.find(f => f.id === activeFileId)?.name || 'code'}
+        files={files}
+        activeFileId={activeFileId || undefined}
         onHighlightLines={(lines) => setHighlightedLines(lines)}
       />
     </div>

@@ -81,6 +81,18 @@ app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', message: 'CodeMentor API is running', model: MODEL_NAME });
 });
 
+// Debug endpoint - View user profile data (for development)
+// NOTE: Profile is stored in browser IndexedDB, not on backend
+// This endpoint returns info about what the backend knows
+app.get('/api/debug/info', (_req, res) => {
+    res.json({
+        message: 'Profile data is stored in browser IndexedDB, not on the server',
+        howToView: 'Open browser DevTools → Application → IndexedDB → CodeMentorDB',
+        stores: ['profiles', 'sessions'],
+        note: 'The frontend fetches profile data and sends relevant portions to API endpoints'
+    });
+});
+
 // =============================================================================
 // TEACHING ENDPOINT - Using Interactions API (Beta)
 // =============================================================================
@@ -469,6 +481,111 @@ Reply with ONLY the message, no JSON or formatting.`;
     }
 });
 
+// TEXT-TO-SPEECH - Natural Voice Generation with ElevenLabs
+// =============================================================================
+
+// ElevenLabs API configuration
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+console.log('🎙️ ElevenLabs TTS:', ELEVENLABS_API_KEY ? 'API key configured ✓' : '⚠️  No API key found');
+
+// ElevenLabs voice IDs for different styles
+const ELEVENLABS_VOICES: Record<string, string> = {
+    tutor: 'EXAVITQu4vr4xnSDxMaL',      // Sarah - soft, warm, friendly
+    helper: '21m00Tcm4TlvDq8ikWAM',      // Rachel - calm and clear
+    neutral: 'ErXwobaYiN019PkySvjV',     // Antoni - professional male
+    excited: 'MF3mGyEYCl7XYWbV9V6O',     // Elli - energetic female
+};
+
+app.post('/api/tts', async (req, res) => {
+    console.log('📢 TTS request received');
+
+    try {
+        const { text, style = 'tutor' } = req.body;
+        console.log(`   Text length: ${text?.length || 0}, Style: ${style}`);
+
+        if (!text || typeof text !== 'string') {
+            console.log('   ❌ No text provided');
+            return res.status(400).json({ error: 'Text is required' });
+        }
+
+        // Limit text length to prevent very long audio generation
+        const maxLength = 1000;
+        const truncatedText = text.length > maxLength
+            ? text.substring(0, maxLength) + '...'
+            : text;
+
+        // Check if ElevenLabs API key is available
+        if (!ELEVENLABS_API_KEY) {
+            console.log('   ⚠️  ElevenLabs API key not found, using fallback');
+            return res.json({
+                audio: null,
+                fallback: true,
+                message: 'ElevenLabs API key not configured'
+            });
+        }
+
+        // Get voice ID for the style
+        const voiceId = ELEVENLABS_VOICES[style] || ELEVENLABS_VOICES.tutor;
+        console.log(`   🎤 Using voice: ${voiceId}`);
+
+        // Call ElevenLabs API
+        console.log('   📡 Calling ElevenLabs API...');
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+            method: 'POST',
+            headers: {
+                'xi-api-key': ELEVENLABS_API_KEY,
+                'Content-Type': 'application/json',
+                'Accept': 'audio/mpeg'
+            },
+            body: JSON.stringify({
+                text: truncatedText,
+                model_id: 'eleven_multilingual_v2',
+                voice_settings: {
+                    stability: 0.5,
+                    similarity_boost: 0.75,
+                    style: 0.5,
+                    use_speaker_boost: true
+                }
+            })
+        });
+
+        console.log(`   📡 ElevenLabs response: ${response.status} ${response.statusText}`);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('   ❌ ElevenLabs API error:', response.status, errorText);
+            return res.json({
+                audio: null,
+                fallback: true,
+                error: `ElevenLabs API error: ${response.status}`,
+                message: 'TTS generation failed, use browser fallback'
+            });
+        }
+
+        // Get audio as buffer and convert to base64
+        const audioBuffer = await response.arrayBuffer();
+        const base64Audio = Buffer.from(audioBuffer).toString('base64');
+        console.log(`   ✅ Audio generated: ${base64Audio.length} chars base64`);
+
+        // Return base64 audio data
+        res.json({
+            audio: base64Audio,
+            mimeType: 'audio/mpeg',
+            fallback: false
+        });
+
+    } catch (error) {
+        console.error('   ❌ TTS error:', error);
+        // Return fallback signal so frontend can use browser TTS
+        res.json({
+            audio: null,
+            fallback: true,
+            error: String(error),
+            message: 'TTS generation failed, use browser fallback'
+        });
+    }
+});
+
 // =============================================================================
 // SCREEN ANALYSIS
 // =============================================================================
@@ -525,6 +642,66 @@ Return as JSON: { "code": "...", "language": "...", "errors": [...], "assignment
     } catch (error) {
         console.error('Screen analysis error:', error);
         res.status(500).json({ error: 'Failed to analyze screen' });
+    }
+});
+
+// =============================================================================
+// TOPIC EXTRACTION (AI-powered)
+// =============================================================================
+
+app.post('/api/extract-topics', async (req, res) => {
+    try {
+        const { text } = req.body;
+
+        if (!text || typeof text !== 'string') {
+            return res.status(400).json({ error: 'Text is required' });
+        }
+
+        // For short texts, use a quick extraction
+        if (text.length < 50) {
+            return res.json({ topics: [] });
+        }
+
+        const prompt = `Extract the specific programming concepts and technical topics discussed in this text.
+
+Text to analyze:
+"${text.slice(0, 2000)}"
+
+Return ONLY the topics as a JSON array of strings. Focus on:
+- Programming concepts (e.g., "recursion", "closures", "async/await")
+- Data structures (e.g., "linked lists", "hash maps", "trees")
+- Design patterns (e.g., "observer pattern", "singleton")
+- Language features (e.g., "TypeScript generics", "React hooks")
+- Algorithms (e.g., "binary search", "dynamic programming")
+
+Return format: ["topic1", "topic2", ...]
+If no clear programming topics, return: []`;
+
+        const interaction = await client.interactions.create({
+            model: MODEL_NAME,
+            input: prompt,
+            generation_config: { thinking_level: 'low', temperature: 0.3 },
+        });
+
+        let responseText = '';
+        if (interaction.outputs) {
+            for (const part of interaction.outputs) {
+                if (part.type === 'text' && part.text) {
+                    responseText += part.text;
+                }
+            }
+        }
+
+        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+            const topics = JSON.parse(jsonMatch[0]);
+            res.json({ topics: Array.isArray(topics) ? topics : [] });
+        } else {
+            res.json({ topics: [] });
+        }
+    } catch (error) {
+        console.error('Topic extraction error:', error);
+        res.json({ topics: [] }); // Fail silently with empty topics
     }
 });
 
@@ -1133,8 +1310,280 @@ app.post('/api/execute', async (req, res) => {
 });
 
 // =============================================================================
+// EXERCISE GENERATION - LeetCode-style practice problems
+// =============================================================================
+
+app.post('/api/generate-exercise', async (req, res) => {
+    try {
+        const { topic, difficulty, weaknessContext, language, userCodeSamples } = req.body;
+
+        if (!topic) {
+            return res.status(400).json({ error: 'Topic is required' });
+        }
+
+        const targetLang = language || 'javascript';
+        const diffLevel = difficulty || 'medium';
+
+        // Build personalization context from user's code
+        const personalizationSection = userCodeSamples ? `
+
+## Student's Recent Code (for personalization)
+Analyze this code to understand the student's coding style, common patterns, and potential areas for improvement:
+\`\`\`
+${userCodeSamples.slice(0, 2000)}
+\`\`\`
+
+Use this information to:
+- Match the exercise style to their coding level
+- Address patterns or anti-patterns you observe
+- Create test cases that challenge their specific habits
+` : '';
+
+        const prompt = `You are an expert programming instructor creating a LeetCode-style coding exercise.
+
+## Task
+Create a coding exercise specifically designed to help a student overcome their weakness in: "${topic}"
+
+${weaknessContext ? `Additional context about the student's struggle: ${weaknessContext}` : ''}
+${personalizationSection}
+
+## Requirements
+1. The problem should be practical and directly address the weakness
+2. Difficulty level: ${diffLevel}
+3. Target language: ${targetLang}
+4. Include 4-6 test cases (mix of visible and hidden)
+5. ${userCodeSamples ? "Tailor the exercise to match the student's apparent skill level from their code" : 'Assume intermediate skill level'}
+
+## Response Format (JSON only):
+{
+    "title": "Short descriptive title",
+    "description": "Full problem description in markdown. Include:\n- Problem statement\n- Input/output format\n- Constraints\n- 1-2 examples with explanations",
+    "starterCode": "Function signature and structure in ${targetLang}. Include comments indicating where to write code.",
+    "testCases": [
+        {
+            "input": "The input as a string (e.g., '[1, 2, 3]' or '5')",
+            "expectedOutput": "Expected output as a string",
+            "isHidden": false,
+            "explanation": "Brief explanation of this test case"
+        }
+    ],
+    "hints": [
+        { "level": 1, "content": "Very vague conceptual hint" },
+        { "level": 2, "content": "More specific directional hint" },
+        { "level": 3, "content": "Detailed approach hint with pseudocode" }
+    ],
+    "solutionApproach": "Brief explanation of the optimal approach (for grading purposes)",
+    "timeComplexity": "Expected time complexity",
+    "spaceComplexity": "Expected space complexity"
+}
+
+Make the first 2-3 test cases visible (isHidden: false) and the rest hidden (isHidden: true).
+Ensure test cases cover edge cases and the core concept being tested.`;
+
+        const interaction = await client.interactions.create({
+            model: MODEL_NAME,
+            input: prompt,
+            generation_config: {
+                thinking_level: 'high',
+                temperature: 0.8,
+            },
+        });
+
+        // Extract response text
+        let responseText = '';
+        if (interaction.outputs) {
+            for (const part of interaction.outputs) {
+                if (part.type === 'text' && part.text) {
+                    responseText += part.text;
+                }
+            }
+        }
+
+        // Parse JSON from response
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            const exercise = JSON.parse(jsonMatch[0]);
+            // Add metadata
+            exercise.id = `exercise_${Date.now()}`;
+            exercise.topic = topic;
+            exercise.difficulty = diffLevel;
+            exercise.language = targetLang;
+            exercise.createdAt = new Date().toISOString();
+            res.json(exercise);
+        } else {
+            console.error('Failed to parse exercise JSON:', responseText);
+            res.status(500).json({ error: 'Failed to generate exercise - invalid response format' });
+        }
+    } catch (error) {
+        console.error('Exercise generation error:', error);
+        res.status(500).json({ error: 'Failed to generate exercise' });
+    }
+});
+
+app.post('/api/validate-exercise', async (req, res) => {
+    try {
+        const { code, testCases, language, exerciseId } = req.body;
+
+        if (!code || !testCases || !Array.isArray(testCases)) {
+            return res.status(400).json({ error: 'Code and testCases are required' });
+        }
+
+        const results: Array<{
+            testCaseId: number;
+            input: string;
+            expectedOutput: string;
+            actualOutput: string;
+            passed: boolean;
+            error?: string;
+            isHidden: boolean;
+        }> = [];
+
+        // Run each test case
+        for (let i = 0; i < testCases.length; i++) {
+            const testCase = testCases[i];
+
+            // Create wrapper code to run the test
+            let wrapperCode = '';
+            const lang = language || 'javascript';
+
+            if (lang === 'javascript' || lang === 'typescript') {
+                wrapperCode = `${code}
+
+// Test execution
+try {
+    const input = ${testCase.input};
+    const result = typeof solution === 'function' ? solution(input) : (typeof main === 'function' ? main(input) : null);
+    console.log(JSON.stringify(result));
+} catch (e) {
+    console.error(e.message);
+}`;
+            } else if (lang === 'python') {
+                wrapperCode = `${code}
+
+# Test execution
+try:
+    input_val = ${testCase.input}
+    result = solution(input_val) if 'solution' in dir() else main(input_val) if 'main' in dir() else None
+    import json
+    print(json.dumps(result))
+except Exception as e:
+    import sys
+    print(str(e), file=sys.stderr)`;
+            } else {
+                // For other languages, just run the code as-is
+                wrapperCode = code;
+            }
+
+            // Execute the code
+            try {
+                const tempFile = join(tmpdir(), `exercise_${exerciseId || Date.now()}_test${i}.${lang === 'python' ? 'py' : 'js'}`);
+                await writeFile(tempFile, wrapperCode);
+
+                const runner = lang === 'python' ? 'python3' : 'node';
+                const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
+                    let stdout = '';
+                    let stderr = '';
+                    const child = spawn(runner, [tempFile], { timeout: 10000 });
+
+                    child.stdout.on('data', (data) => { stdout += data.toString(); });
+                    child.stderr.on('data', (data) => { stderr += data.toString(); });
+                    child.on('close', (exitCode) => {
+                        resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: exitCode ?? 0 });
+                    });
+                    child.on('error', (err) => {
+                        resolve({ stdout: '', stderr: err.message, exitCode: 1 });
+                    });
+                });
+
+                await unlink(tempFile).catch(() => { });
+
+                const actualOutput = result.stdout.trim();
+                const expectedOutput = testCase.expectedOutput.trim();
+                const passed = actualOutput === expectedOutput ||
+                    // Try parsing as JSON for comparison
+                    ((() => {
+                        try {
+                            return JSON.stringify(JSON.parse(actualOutput)) === JSON.stringify(JSON.parse(expectedOutput));
+                        } catch {
+                            return false;
+                        }
+                    })());
+
+                results.push({
+                    testCaseId: i,
+                    input: testCase.input,
+                    expectedOutput,
+                    actualOutput: result.stderr ? `Error: ${result.stderr}` : actualOutput,
+                    passed,
+                    error: result.stderr || undefined,
+                    isHidden: testCase.isHidden || false,
+                });
+            } catch (execError) {
+                results.push({
+                    testCaseId: i,
+                    input: testCase.input,
+                    expectedOutput: testCase.expectedOutput,
+                    actualOutput: '',
+                    passed: false,
+                    error: execError instanceof Error ? execError.message : 'Execution failed',
+                    isHidden: testCase.isHidden || false,
+                });
+            }
+        }
+
+        const passedCount = results.filter(r => r.passed).length;
+        const allPassed = passedCount === results.length;
+
+        // Generate AI feedback if not all tests passed
+        let feedback = '';
+        if (!allPassed && results.some(r => !r.passed && !r.isHidden)) {
+            const failedTests = results.filter(r => !r.passed && !r.isHidden);
+            const feedbackPrompt = `A student's code failed some test cases. Provide brief, encouraging feedback without giving away the solution.
+
+Failed test cases:
+${failedTests.map(t => `- Input: ${t.input}, Expected: ${t.expectedOutput}, Got: ${t.actualOutput}${t.error ? ` (Error: ${t.error})` : ''}`).join('\n')}
+
+Give 1-2 sentences of guidance to help them debug.`;
+
+            try {
+                const feedbackInteraction = await client.interactions.create({
+                    model: MODEL_NAME,
+                    input: feedbackPrompt,
+                    generation_config: { thinking_level: 'low', temperature: 0.7 },
+                });
+
+                if (feedbackInteraction.outputs) {
+                    for (const part of feedbackInteraction.outputs) {
+                        if (part.type === 'text' && part.text) {
+                            feedback = part.text;
+                        }
+                    }
+                }
+            } catch {
+                feedback = 'Some test cases failed. Check your logic and try again!';
+            }
+        } else if (allPassed) {
+            feedback = '🎉 All test cases passed! Great job!';
+        }
+
+        res.json({
+            results: results.map(r => r.isHidden ? { ...r, input: '[Hidden]', expectedOutput: '[Hidden]' } : r),
+            passedCount,
+            totalCount: results.length,
+            allPassed,
+            feedback,
+            score: Math.round((passedCount / results.length) * 100),
+        });
+    } catch (error) {
+        console.error('Exercise validation error:', error);
+        res.status(500).json({ error: 'Failed to validate exercise' });
+    }
+});
+
+// =============================================================================
 // START SERVER
 // =============================================================================
+
 
 app.listen(PORT, async () => {
     console.log(`\n🚀 CodeMentor API Server running on http://localhost:${PORT}`);

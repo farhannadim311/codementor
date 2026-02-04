@@ -1,32 +1,38 @@
 import React, { useState } from 'react';
-import { BookOpen, Sparkles, CheckCircle, ChevronRight, Loader2 } from 'lucide-react';
+import { BookOpen, Sparkles, CheckCircle, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 import { initializeCurriculumGenerator } from '../agents/curriculumGenerator';
 import type { Curriculum, Weakness } from '../types';
 import './CurriculumView.css';
 
 interface CurriculumViewProps {
     weaknesses: Weakness[];
+    totalSessions?: number;
+    totalCodingTime?: number;
     onStartPractice?: (topic: string, prompt?: string) => void;
 }
 
 export const CurriculumView: React.FC<CurriculumViewProps> = ({
     weaknesses,
+    totalSessions = 0,
+    totalCodingTime = 0,
     onStartPractice
 }) => {
     const [curriculum, setCurriculum] = useState<Curriculum | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [expandedModule, setExpandedModule] = useState<string | null>(null);
 
+    // Check if we have enough data for personalization
+    const hasEnoughData = weaknesses.length > 0 || totalSessions >= 3 || totalCodingTime >= 5;
+
     const handleGenerate = async () => {
+        if (!hasEnoughData) {
+            return; // Don't generate without real data
+        }
+
         setIsGenerating(true);
         try {
             const generator = initializeCurriculumGenerator();
-            // Use top 3 weaknesses or at least some default tags if empty
-            const targetWeaknesses = weaknesses.length > 0
-                ? weaknesses
-                : [{ topic: 'General Coding', description: 'Foundation', impact: 'high' }];
-
-            const newCurriculum = await generator.generateFromWeaknesses(targetWeaknesses as Weakness[]);
+            const newCurriculum = await generator.generateFromWeaknesses(weaknesses);
             setCurriculum(newCurriculum);
 
             // Auto expand first module
@@ -40,8 +46,36 @@ export const CurriculumView: React.FC<CurriculumViewProps> = ({
         }
     };
 
-    if (!curriculum && weaknesses.length === 0) {
-        return null; // Don't show if no weaknesses and no curriculum
+    // Show insufficient data message
+    if (!hasEnoughData && !curriculum) {
+        return (
+            <div className="curriculum-container">
+                <div className="curriculum-header">
+                    <h3>
+                        <BookOpen size={20} />
+                        Personalized Learning Path
+                    </h3>
+                </div>
+                <div className="insufficient-data-message">
+                    <AlertCircle size={48} className="warning-icon" />
+                    <h4>Not Enough Data Yet</h4>
+                    <p>
+                        We need more interaction to create a truly personalized curriculum for you.
+                        To build your learning profile:
+                    </p>
+                    <ul>
+                        <li>💬 Ask questions in the chat about coding concepts</li>
+                        <li>⌨️ Write some code in the editor</li>
+                        <li>🔍 Use the code review feature</li>
+                        <li>⏱️ Spend at least 5 minutes coding</li>
+                    </ul>
+                    <p className="progress-note">
+                        <strong>Current Progress:</strong> {weaknesses.length} weaknesses detected,
+                        {totalSessions} sessions, {Math.round(totalCodingTime)} mins coding time
+                    </p>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -75,7 +109,7 @@ export const CurriculumView: React.FC<CurriculumViewProps> = ({
             {!curriculum ? (
                 <div className="empty-curriculum">
                     <p>
-                        Based on your analysis, we can build a custom curriculum targeting your specific needs.
+                        Based on your {weaknesses.length} detected weakness(es), we can build a custom curriculum.
                         Click "Generate Plan" to get started!
                     </p>
                 </div>
