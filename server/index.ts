@@ -1447,6 +1447,70 @@ Ensure test cases cover edge cases and the core concept being tested.`;
     }
 });
 
+// =============================================================================
+// CHAT HISTORY API
+// =============================================================================
+
+// Get chat history for a user
+app.get('/api/chat-history', async (req, res) => {
+    try {
+        const userId = req.query.userId as string;
+        const userDir = await ensureUserWorkspace(userId);
+        const historyFile = join(userDir, 'chat_history.json');
+
+        try {
+            const content = await import('fs').then(fs => fs.promises.readFile(historyFile, 'utf-8'));
+            res.json(JSON.parse(content));
+        } catch (error: any) {
+            // If file doesn't exist, return empty array
+            if (error.code === 'ENOENT') {
+                res.json([]);
+            } else {
+                throw error;
+            }
+        }
+    } catch (error) {
+        console.error('Get chat history error:', error);
+        res.status(500).json({ error: 'Failed to get chat history' });
+    }
+});
+
+// Save chat message
+app.post('/api/chat-history', async (req, res) => {
+    try {
+        const { userId, message } = req.body; // message is type Interaction
+        if (!message) {
+            return res.status(400).json({ error: 'Message is required' });
+        }
+
+        const userDir = await ensureUserWorkspace(userId);
+        const historyFile = join(userDir, 'chat_history.json');
+
+        // Read existing history
+        let history: any[] = [];
+        try {
+            const content = await import('fs').then(fs => fs.promises.readFile(historyFile, 'utf-8'));
+            history = JSON.parse(content);
+        } catch (error: any) {
+            if (error.code !== 'ENOENT') throw error;
+        }
+
+        // Append new message
+        history.push(message);
+
+        // Keep last 100 messages to avoid indefinite growth
+        if (history.length > 100) {
+            history = history.slice(history.length - 100);
+        }
+
+        await writeFile(historyFile, JSON.stringify(history, null, 2), 'utf-8');
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Save chat history error:', error);
+        res.status(500).json({ error: 'Failed to save chat history' });
+    }
+});
+
 app.post('/api/validate-exercise', async (req, res) => {
     try {
         const { code, testCases, language, exerciseId } = req.body;

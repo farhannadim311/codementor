@@ -30,6 +30,8 @@ import type { GeneratedExercise } from './services/gemini';
 import {
   checkBackendHealth,
   streamTeachingResponse,
+  getChatHistory,
+  saveChatMessage,
   getCompilers,
   executeCode,
 } from './services/gemini';
@@ -47,6 +49,7 @@ import {
   saveFile,
   deleteFile as deleteStoredFile,
   clearAllFiles,
+  getCurrentUserId,
 } from './services/fileStorage';
 import { initializeStuckDetector, getStuckDetector } from './agents/stuckDetector';
 import { initializeWeaknessDetector } from './agents/weaknessDetector';
@@ -233,6 +236,12 @@ function App() {
       // Start a new session
       const newSession = createSession();
       setSession(newSession);
+
+      // Load chat history
+      const history = await getChatHistory(getCurrentUserId());
+      if (history.length > 0) {
+        setInteractions(history);
+      }
 
       // Load available compilers
       const compilersData = await getCompilers();
@@ -686,6 +695,10 @@ Student's question: ${message}`;
           highlightedLines: [...new Set(highlightLines)],
           isStreaming: false
         };
+
+        // Save to backend history
+        saveChatMessage(getCurrentUserId(), completeInteraction);
+
         return {
           ...prev,
           interactions: [...prev.interactions, completeInteraction],

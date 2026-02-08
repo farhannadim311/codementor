@@ -64,6 +64,31 @@ export const getTeachingResponse = async (
     return response.json();
 };
 
+// Get chat history
+export const getChatHistory = async (userId: string): Promise<any[]> => {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/chat-history?userId=${encodeURIComponent(userId)}`);
+        if (!response.ok) return [];
+        return response.json();
+    } catch (error) {
+        console.error('Failed to get chat history:', error);
+        return [];
+    }
+};
+
+// Save a chat message to history
+export const saveChatMessage = async (userId: string, message: any): Promise<void> => {
+    try {
+        await fetch(`${API_BASE_URL}/api/chat-history`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, message }),
+        });
+    } catch (error) {
+        console.error('Failed to save chat message:', error);
+    }
+};
+
 // Streaming teaching response (returns async generator)
 export async function* streamTeachingResponse(
     message: string,
