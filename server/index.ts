@@ -962,7 +962,7 @@ app.post('/api/shell/input/:sessionId', (req, res) => {
     console.log(`📟 Executing command in session ${sessionId}: ${command}`);
     const proc = spawn('bash', ['-c', command], {
         cwd: session.cwd,
-        env: { ...process.env, PYTHONUNBUFFERED: '1' }
+        env: { ...process.env, PYTHONUNBUFFERED: '1', TERM: 'xterm-256color' }
     });
 
     session.currentProcess = proc;
