@@ -859,7 +859,9 @@ const shellSessions: Map<string, ShellSession> = new Map();
 app.post('/api/shell/spawn', async (req, res) => {
     try {
         const sessionId = `shell_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const cwd = req.body?.cwd || PROJECT_DIR;
+        const userId = req.body?.userId;
+        const userDir = await ensureUserWorkspace(userId);
+        const cwd = req.body?.cwd || userDir;
 
         const session: ShellSession = {
             cwd,
@@ -873,7 +875,7 @@ app.post('/api/shell/spawn', async (req, res) => {
         const initialMsg = `data: ${JSON.stringify({ type: 'stdout', content: `$ ` })}\n\n`;
         session.outputBuffer.push(initialMsg);
 
-        console.log(`✅ Shell session created: ${sessionId}`);
+        console.log(`✅ Shell session created: ${sessionId} for user ${userId || 'shared'}`);
         res.json({ sessionId, shell: 'bash', cwd });
     } catch (error) {
         console.error('Shell spawn error:', error);
@@ -1099,9 +1101,26 @@ app.get('/api/compilers', (_req, res) => {
 // =============================================================================
 
 const WORKSPACE_BASE = join(homedir(), 'CodeMentorProjects');
-const PROJECT_DIR = join(WORKSPACE_BASE, 'DefaultProject');
+const PROJECT_DIR = join(WORKSPACE_BASE, 'DefaultProject'); // Legacy fallback
 
-// Ensure workspace exists
+// Get user-specific project directory (per-user isolation)
+const getUserProjectDir = (userId?: string): string => {
+    if (!userId || userId === 'undefined' || userId === 'null') {
+        return join(WORKSPACE_BASE, 'shared');
+    }
+    // Sanitize userId to prevent path traversal
+    const safeUserId = userId.replace(/[^a-zA-Z0-9-]/g, '');
+    return join(WORKSPACE_BASE, safeUserId);
+};
+
+// Ensure a user's workspace exists
+const ensureUserWorkspace = async (userId?: string): Promise<string> => {
+    const userDir = getUserProjectDir(userId);
+    await mkdir(userDir, { recursive: true });
+    return userDir;
+};
+
+// Ensure default workspace exists (for backward compatibility)
 (async () => {
     try {
         await mkdir(PROJECT_DIR, { recursive: true });
@@ -1133,7 +1152,9 @@ async function getFiles(dir: string, baseDir: string): Promise<any[]> {
 // Get all files
 app.get('/api/files', async (req, res) => {
     try {
-        const files = await getFiles(PROJECT_DIR, PROJECT_DIR);
+        const userId = req.query.userId as string | undefined;
+        const userDir = await ensureUserWorkspace(userId);
+        const files = await getFiles(userDir, userDir);
         res.json(files);
     } catch (error) {
         console.error('List files error:', error);
@@ -1144,14 +1165,16 @@ app.get('/api/files', async (req, res) => {
 // Read file content
 app.get('/api/files/content', async (req, res) => {
     try {
-        const { path } = req.query;
+        const { path, userId } = req.query;
         if (!path || typeof path !== 'string') {
             return res.status(400).json({ error: 'Path is required' });
         }
 
-        // Security check: prevent traversal out of project dir
-        const fullPath = join(PROJECT_DIR, path);
-        if (!fullPath.startsWith(PROJECT_DIR)) {
+        const userDir = await ensureUserWorkspace(userId as string | undefined);
+
+        // Security check: prevent traversal out of user's project dir
+        const fullPath = join(userDir, path);
+        if (!fullPath.startsWith(userDir)) {
             return res.status(403).json({ error: 'Access denied' });
         }
 
@@ -1166,13 +1189,15 @@ app.get('/api/files/content', async (req, res) => {
 // Write/Create file
 app.post('/api/files', async (req, res) => {
     try {
-        const { path, content } = req.body;
+        const { path, content, userId } = req.body;
         if (!path) {
             return res.status(400).json({ error: 'Path is required' });
         }
 
-        const fullPath = join(PROJECT_DIR, path);
-        if (!fullPath.startsWith(PROJECT_DIR)) {
+        const userDir = await ensureUserWorkspace(userId);
+
+        const fullPath = join(userDir, path);
+        if (!fullPath.startsWith(userDir)) {
             return res.status(403).json({ error: 'Access denied' });
         }
 
@@ -1193,13 +1218,15 @@ app.post('/api/files', async (req, res) => {
 // Delete file
 app.delete('/api/files', async (req, res) => {
     try {
-        const { path } = req.query;
+        const { path, userId } = req.query;
         if (!path || typeof path !== 'string') {
             return res.status(400).json({ error: 'Path is required' });
         }
 
-        const fullPath = join(PROJECT_DIR, path);
-        if (!fullPath.startsWith(PROJECT_DIR)) {
+        const userDir = await ensureUserWorkspace(userId as string | undefined);
+
+        const fullPath = join(userDir, path);
+        if (!fullPath.startsWith(userDir)) {
             return res.status(403).json({ error: 'Access denied' });
         }
 

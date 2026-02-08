@@ -3,8 +3,23 @@ import type { FileItem } from '../components/MonacoEditor';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
 
+// Generate or retrieve unique user ID for per-user isolation
+const getUserId = (): string => {
+    let userId = localStorage.getItem('codementor_userId');
+    if (!userId) {
+        userId = crypto.randomUUID();
+        localStorage.setItem('codementor_userId', userId);
+        console.log('🆔 Generated new user ID:', userId);
+    }
+    return userId;
+};
+
+// Export for use in other services (e.g., shell spawn)
+export const getCurrentUserId = getUserId;
+
 export const initializeFileDatabase = async (): Promise<void> => {
-    // No-op for real FS, or maybe check connection
+    // Ensure user ID exists
+    getUserId();
     return Promise.resolve();
 };
 
@@ -29,6 +44,7 @@ const getLanguageFromExtension = (filename: string): string => {
         css: 'css',
         json: 'json',
         md: 'markdown',
+        txt: 'plaintext',
     };
     return languageMap[ext] || 'plaintext';
 };
@@ -41,7 +57,8 @@ export const saveFile = async (file: FileItem): Promise<void> => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 path: file.name,
-                content: file.content
+                content: file.content,
+                userId: getUserId()
             })
         });
     } catch (error) {
@@ -58,7 +75,8 @@ export const saveAllFiles = async (files: FileItem[]): Promise<void> => {
 // Load all files
 export const loadFiles = async (): Promise<FileItem[]> => {
     try {
-        const response = await fetch(`${API_URL}/files`);
+        const userId = getUserId();
+        const response = await fetch(`${API_URL}/files?userId=${encodeURIComponent(userId)}`);
         if (!response.ok) {
             console.warn('Failed to fetch files list, defaulting to empty');
             return [];
@@ -79,7 +97,7 @@ export const loadFiles = async (): Promise<FileItem[]> => {
                 const skipExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'zip', 'tar', 'gz'];
                 if (ext && skipExts.includes(ext)) return;
 
-                const contentRes = await fetch(`${API_URL}/files/content?path=${encodeURIComponent(entry.name)}`);
+                const contentRes = await fetch(`${API_URL}/files/content?path=${encodeURIComponent(entry.name)}&userId=${encodeURIComponent(userId)}`);
                 if (contentRes.ok) {
                     const { content } = await contentRes.json();
                     loadedFiles.push({
@@ -106,7 +124,8 @@ export const loadFiles = async (): Promise<FileItem[]> => {
 // Delete a file -> Now takes fileName (path)
 export const deleteFile = async (fileName: string): Promise<void> => {
     try {
-        await fetch(`${API_URL}/files?path=${encodeURIComponent(fileName)}`, {
+        const userId = getUserId();
+        await fetch(`${API_URL}/files?path=${encodeURIComponent(fileName)}&userId=${encodeURIComponent(userId)}`, {
             method: 'DELETE'
         });
     } catch (error) {

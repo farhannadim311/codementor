@@ -227,11 +227,11 @@ export interface ShellSession {
 }
 
 // Spawn a new interactive shell
-export const spawnShell = async (cwd?: string): Promise<ShellSession> => {
+export const spawnShell = async (cwd?: string, userId?: string): Promise<ShellSession> => {
     const response = await fetch(`${API_BASE_URL}/api/shell/spawn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cwd }),
+        body: JSON.stringify({ cwd, userId }),
     });
 
     if (!response.ok) {

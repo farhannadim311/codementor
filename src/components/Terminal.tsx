@@ -19,6 +19,7 @@ import {
     killShell,
     type ShellSession
 } from '../services/gemini';
+import { getCurrentUserId } from '../services/fileStorage';
 import './Terminal.css';
 
 export interface TerminalOutput {
@@ -114,7 +115,7 @@ export function Terminal({
 
         setIsConnecting(true);
         try {
-            const session = await spawnShell();
+            const session = await spawnShell(undefined, getCurrentUserId());
             setShellSession(session);
             setIsShellActive(true);
             setShellOutput([`🐚 Shell started (${session.shell})\n`]);
