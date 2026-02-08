@@ -19,9 +19,9 @@ interface AdaptiveHintState {
 }
 
 const DEFAULT_CONFIG: StuckDetectorConfig = {
-    stuckThresholdMs: 5 * 60 * 1000, // 5 minutes
-    errorRepeatThreshold: 3,
-    idleThresholdMs: 10 * 60 * 1000, // 10 minutes
+    stuckThresholdMs: 10 * 60 * 1000, // 10 minutes
+    errorRepeatThreshold: 5,
+    idleThresholdMs: 15 * 60 * 1000, // 15 minutes
     onStuckDetected: () => { },
     onIdleDetected: () => { },
 };

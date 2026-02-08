@@ -1585,8 +1585,8 @@ Give 1-2 sentences of guidance to help them debug.`;
 // =============================================================================
 
 
-app.listen(PORT, async () => {
-    console.log(`\n🚀 CodeMentor API Server running on http://localhost:${PORT}`);
+app.listen(Number(PORT), '0.0.0.0', async () => {
+    console.log(`\n🚀 CodeMentor API Server running on http://0.0.0.0:${PORT}`);
     console.log(`   API Key: ${GEMINI_API_KEY.slice(0, 8)}...${GEMINI_API_KEY.slice(-4)}`);
     console.log(`   Model: ${MODEL_NAME} (Gemini 3 Interactions API)`);
 
