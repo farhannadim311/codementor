@@ -98,13 +98,19 @@ class WeaknessDetectorAgent {
                     }
                 });
 
-                // Update strengths
+                // Update strengths (limit to 6 most recent)
+                const MAX_ITEMS = 6;
                 const currentStrengths = new Set(profile.strengths);
                 detected.newStrengths?.forEach(s => currentStrengths.add(s));
-                profile.strengths = Array.from(currentStrengths);
+                const strengthsArray = Array.from(currentStrengths);
+                // Keep only most recent 6 (new ones are added at the end)
+                profile.strengths = strengthsArray.slice(-MAX_ITEMS);
 
-                // Save updated profile
-                profile.weaknesses = finalWeaknesses;
+                // Save updated profile (also limit weaknesses to 6)
+                const limitedWeaknesses = finalWeaknesses
+                    .sort((a, b) => new Date(b.lastOccurred).getTime() - new Date(a.lastOccurred).getTime())
+                    .slice(0, MAX_ITEMS);
+                profile.weaknesses = limitedWeaknesses;
                 await saveProfile(profile);
 
                 // Notify about new weaknesses & strengths & resolved
