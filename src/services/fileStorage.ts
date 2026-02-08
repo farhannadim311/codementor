@@ -1,7 +1,7 @@
 // File Storage Service - Real File System via API
 import type { FileItem } from '../components/MonacoEditor';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001') + '/api';
 
 export const initializeFileDatabase = async (): Promise<void> => {
     // No-op for real FS, or maybe check connection
