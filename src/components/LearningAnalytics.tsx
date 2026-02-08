@@ -1,5 +1,5 @@
 // LearningAnalytics Component - Enhanced analytics with time series and trends
-import { useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { TrendingUp, TrendingDown, BarChart2, Clock, Target, Zap } from 'lucide-react';
 import {
     LineChart,
@@ -12,37 +12,77 @@ import {
     AreaChart,
     Area,
 } from 'recharts';
-import type { LearningProfile } from '../types';
+import type { LearningProfile, CodingSession } from '../types';
+import { getRecentSessions } from '../services/learningProfile';
 import './LearningAnalytics.css';
 
 interface LearningAnalyticsProps {
     profile: LearningProfile | null;
 }
 
-// Generate mock historical data for demo purposes
-// In production, this would come from stored session data
-const generateHistoricalData = (profile: LearningProfile | null) => {
-    if (!profile) return [];
+interface DayData {
+    date: string;
+    sessions: number;
+    minutes: number;
+    skillScore: number;
+}
 
+// Aggregate real session data by day
+const aggregateSessionsByDay = (sessions: CodingSession[], profile: LearningProfile | null): DayData[] => {
     const now = new Date();
-    const data = [];
+    const dayMap = new Map<string, { sessions: number; minutes: number }>();
 
-    // Generate last 14 days of mock data
+    // Initialize last 14 days
     for (let i = 13; i >= 0; i--) {
         const date = new Date(now);
         date.setDate(date.getDate() - i);
+        const dateKey = date.toISOString().split('T')[0];
+        dayMap.set(dateKey, { sessions: 0, minutes: 0 });
+    }
 
-        // Mock progression data
-        const baseProgress = Math.max(0, (14 - i) * (profile.totalSessions / 14));
-        const randomVariation = Math.random() * 10 - 5;
+    // Aggregate sessions
+    sessions.forEach(session => {
+        const startDate = new Date(session.startTime);
+        const dateKey = startDate.toISOString().split('T')[0];
+
+        if (dayMap.has(dateKey)) {
+            const existing = dayMap.get(dateKey)!;
+            existing.sessions += 1;
+
+            // Calculate session duration
+            if (session.endTime) {
+                const duration = (new Date(session.endTime).getTime() - startDate.getTime()) / 1000 / 60;
+                existing.minutes += Math.round(duration);
+            } else {
+                // Active session - estimate based on interactions
+                existing.minutes += session.interactions.length * 2; // ~2 min per interaction
+            }
+        }
+    });
+
+    // Convert to array with skill score calculation
+    const data: DayData[] = [];
+    let cumulativeScore = 50; // Base skill score
+
+    dayMap.forEach((value, dateKey) => {
+        const date = new Date(dateKey);
+        // Skill score improves with activity
+        if (value.sessions > 0) {
+            cumulativeScore = Math.min(100, cumulativeScore + value.sessions * 2 + value.minutes * 0.1);
+        }
+
+        // Factor in strengths and weaknesses
+        const strengthBonus = (profile?.strengths.length || 0) * 3;
+        const weaknessPenalty = (profile?.weaknesses.length || 0) * 2;
+        const adjustedScore = Math.min(100, Math.max(0, cumulativeScore + strengthBonus - weaknessPenalty));
 
         data.push({
             date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-            sessions: Math.max(0, Math.floor(baseProgress + randomVariation)),
-            minutes: Math.max(0, Math.floor((baseProgress + randomVariation) * 3)),
-            skillScore: Math.min(100, Math.floor(50 + (14 - i) * 3 + randomVariation)),
+            sessions: value.sessions,
+            minutes: value.minutes,
+            skillScore: Math.round(adjustedScore),
         });
-    }
+    });
 
     return data;
 };
@@ -51,11 +91,29 @@ const getImprovementPercentage = (data: { skillScore: number }[]): number => {
     if (data.length < 2) return 0;
     const first = data[0].skillScore;
     const last = data[data.length - 1].skillScore;
+    if (first === 0) return last > 0 ? 100 : 0;
     return Math.round(((last - first) / first) * 100);
 };
 
 export const LearningAnalytics: React.FC<LearningAnalyticsProps> = ({ profile }) => {
-    const historicalData = useMemo(() => generateHistoricalData(profile), [profile]);
+    const [sessions, setSessions] = useState<CodingSession[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const loadSessions = async () => {
+            try {
+                const recentSessions = await getRecentSessions(100);
+                setSessions(recentSessions);
+            } catch (error) {
+                console.error('Failed to load sessions:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadSessions();
+    }, []);
+
+    const historicalData = useMemo(() => aggregateSessionsByDay(sessions, profile), [sessions, profile]);
     const improvement = useMemo(() => getImprovementPercentage(historicalData), [historicalData]);
 
     if (!profile) return null;
