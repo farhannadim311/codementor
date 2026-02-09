@@ -11,6 +11,7 @@ interface TeachingChatProps {
     onRequestHint: () => void;
     isLoading?: boolean;
     currentHintLevel: number;
+    onResetChat: () => void;
 }
 
 export const TeachingChat: React.FC<TeachingChatProps> = ({
@@ -19,6 +20,7 @@ export const TeachingChat: React.FC<TeachingChatProps> = ({
     onRequestHint,
     isLoading = false,
     currentHintLevel,
+    onResetChat,
 }) => {
     const [message, setMessage] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -88,17 +90,26 @@ export const TeachingChat: React.FC<TeachingChatProps> = ({
                     <BookOpen size={20} />
                     CodeMentor
                 </h3>
-                <div className="hint-level">
-                    <span className="label">Hint Level:</span>
-                    <div className="level-dots">
-                        {[1, 2, 3, 4, 5].map((level) => (
-                            <span
-                                key={level}
-                                className={`level-dot ${level <= currentHintLevel ? 'active' : ''}`}
-                                title={`Level ${level}`}
-                            />
-                        ))}
+                <div className="header-controls">
+                    <div className="hint-level">
+                        <span className="label">Hint Level:</span>
+                        <div className="level-dots">
+                            {[1, 2, 3, 4, 5].map((level) => (
+                                <span
+                                    key={level}
+                                    className={`level-dot ${level <= currentHintLevel ? 'active' : ''}`}
+                                    title={`Level ${level}`}
+                                />
+                            ))}
+                        </div>
                     </div>
+                    <button
+                        className="refresh-chat-btn"
+                        onClick={onResetChat}
+                        title="Start New Session"
+                    >
+                        <RefreshCw size={16} />
+                    </button>
                 </div>
             </div>
 

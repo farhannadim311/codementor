@@ -34,6 +34,7 @@ import {
   saveChatMessage,
   getCompilers,
   executeCode,
+  resetSession, // Import resetSession
 } from './services/gemini';
 import {
   initializeDatabase,
@@ -729,6 +730,12 @@ Student's question: ${message}`;
     handleSendMessage("I'm stuck. Can you give me a hint without giving away the answer?");
   };
 
+  const handleResetChat = () => {
+    resetSession();
+    setInteractions([]);
+    showNotification('success', 'Chat session reset');
+  };
+
   const handleVoiceTranscript = (text: string) => {
     handleSendMessage(text);
   };
@@ -742,22 +749,30 @@ Student's question: ${message}`;
     setIsGeneratingExercise(true);
 
     try {
-      // Detect dominant language from existing project files
-      const languageCounts = new Map<string, number>();
-      files.filter(f => f.type === 'code').forEach(f => {
-        const lang = f.language || 'javascript';
-        languageCounts.set(lang, (languageCounts.get(lang) || 0) + 1);
-      });
+      // Prioritize active file's language first
+      const activeFile = files.find(f => f.id === activeFileId);
+      let detectedLanguage = 'javascript'; // Default fallback
 
-      // Find most common language, default to javascript
-      let detectedLanguage = 'javascript';
-      let maxCount = 0;
-      languageCounts.forEach((count, lang) => {
-        if (count > maxCount) {
-          maxCount = count;
-          detectedLanguage = lang;
-        }
-      });
+      if (activeFile && activeFile.type === 'code' && activeFile.language) {
+        // Use the language of the file the user is currently working on
+        detectedLanguage = activeFile.language;
+      } else {
+        // Fallback: Detect dominant language from existing project files
+        const languageCounts = new Map<string, number>();
+        files.filter(f => f.type === 'code').forEach(f => {
+          const lang = f.language || 'javascript';
+          languageCounts.set(lang, (languageCounts.get(lang) || 0) + 1);
+        });
+
+        // Find most common language
+        let maxCount = 0;
+        languageCounts.forEach((count, lang) => {
+          if (count > maxCount) {
+            maxCount = count;
+            detectedLanguage = lang;
+          }
+        });
+      }
 
       // Get weakness context from profile
       const weakness = profile?.weaknesses.find(w => w.topic.toLowerCase() === topic.toLowerCase());
@@ -1075,6 +1090,7 @@ Student's question: ${message}`;
                     onRequestHint={handleRequestHint}
                     isLoading={isProcessing}
                     currentHintLevel={currentHintLevel}
+                    onResetChat={handleResetChat}
                   />
                 )}
               </div>
@@ -1088,7 +1104,8 @@ Student's question: ${message}`;
                 onSendMessage={handleSendMessage}
                 onRequestHint={handleRequestHint}
                 isLoading={isProcessing}
-                currentHintLevel={currentHintLevel}
+                currentHintLevel={Math.max(currentHintLevel, getStuckDetector()?.getAdaptiveHintLevel() || 1)}
+                onResetChat={handleResetChat}
               />
             </div>
           )}

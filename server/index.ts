@@ -31,6 +31,273 @@ const client = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 // Model configuration
 const MODEL_NAME = 'gemini-3-flash-preview';
 
+// =============================================================================
+// LANGUAGE CONFIGURATION REGISTRY
+// Defines how to handle each language for code execution
+// =============================================================================
+interface LanguageConfig {
+    extension: string;
+    interpreted: boolean;
+    runner: string;
+    compiler?: string;
+    compileArgs?: string[];
+    // Template placeholders: {CODE}, {INPUT}, {INPUT_ESCAPED}
+    wrapperTemplate: string;
+    // If true, input is passed via stdin instead of template substitution
+    usesStdin?: boolean;
+}
+
+const LANGUAGE_REGISTRY: Record<string, LanguageConfig> = {
+    javascript: {
+        extension: '.js',
+        interpreted: true,
+        runner: 'node',
+        wrapperTemplate: `{CODE}
+
+// Test execution
+try {
+    const input = JSON.parse('{INPUT_ESCAPED}');
+    const result = solution(input);
+    console.log(JSON.stringify(result));
+} catch (e) {
+    console.error(e.message);
+}`,
+    },
+    typescript: {
+        extension: '.ts',
+        interpreted: true,
+        runner: 'npx tsx',
+        wrapperTemplate: `{CODE}
+
+// Test execution
+try {
+    const input = JSON.parse('{INPUT_ESCAPED}');
+    const result = solution(input);
+    console.log(JSON.stringify(result));
+} catch (e) {
+    console.error((e as Error).message);
+}`,
+    },
+    python: {
+        extension: '.py',
+        interpreted: true,
+        runner: 'python3',
+        wrapperTemplate: `{CODE}
+
+# Test execution
+import json
+import sys
+
+try:
+    input_val = json.loads(r'''{INPUT}''')
+    result = solution(input_val)
+    print(json.dumps(result))
+except Exception as e:
+    print(str(e), file=sys.stderr)`,
+    },
+    cpp: {
+        extension: '.cpp',
+        interpreted: false,
+        compiler: 'g++',
+        compileArgs: ['-std=c++17', '-O2'],
+        runner: '',
+        // For compiled languages, user writes complete main() that reads from stdin
+        // We just compile and run, passing input via stdin
+        wrapperTemplate: `{CODE}`,
+        usesStdin: true,
+    },
+    c: {
+        extension: '.c',
+        interpreted: false,
+        compiler: 'gcc',
+        compileArgs: ['-O2'],
+        runner: '',
+        wrapperTemplate: `{CODE}`,
+        usesStdin: true,
+    },
+    java: {
+        extension: '.java',
+        interpreted: false,
+        compiler: 'javac',
+        runner: 'java',
+        wrapperTemplate: `{CODE}`,
+        usesStdin: true,
+    },
+    ruby: {
+        extension: '.rb',
+        interpreted: true,
+        runner: 'ruby',
+        wrapperTemplate: `{CODE}
+
+require 'json'
+
+begin
+    input = JSON.parse('{INPUT_ESCAPED}')
+    result = solution(input)
+    puts JSON.generate(result)
+rescue => e
+    STDERR.puts e.message
+end`,
+    },
+    go: {
+        extension: '.go',
+        interpreted: false,
+        compiler: 'go',
+        compileArgs: ['build', '-o'],
+        runner: '',
+        wrapperTemplate: `{CODE}`,
+        usesStdin: true,
+    },
+    bash: {
+        extension: '.sh',
+        interpreted: true,
+        runner: 'bash',
+        wrapperTemplate: `{CODE}
+
+# Test execution
+INPUT='{INPUT_ESCAPED}'
+solution "$INPUT"`,
+    },
+};
+
+// Helper to get language config with fallback
+function getLanguageConfig(lang: string): LanguageConfig | null {
+    const normalized = lang.toLowerCase().trim();
+    if (LANGUAGE_REGISTRY[normalized]) {
+        return LANGUAGE_REGISTRY[normalized];
+    }
+    return null; // Will trigger AI generation
+}
+
+// Cache for AI-generated language configs
+const aiGeneratedConfigs: Map<string, LanguageConfig> = new Map();
+
+// AI-powered wrapper generation for any language
+async function generateLanguageConfigWithAI(language: string): Promise<LanguageConfig> {
+    // Check cache first
+    const cached = aiGeneratedConfigs.get(language.toLowerCase());
+    if (cached) {
+        return cached;
+    }
+
+    console.log(`[AI] Generating wrapper for unknown language: ${language}`);
+
+    const prompt = `You are a code execution expert. Generate the configuration needed to run ${language} code.
+
+The code will have a function named "solution" that takes JSON-parsed input and returns a result.
+Generate a wrapper that:
+1. Contains a {CODE} placeholder where user code will be inserted
+2. Contains a {INPUT} placeholder for the raw JSON input string
+3. Parses the JSON input using ${language}'s JSON library
+4. Calls the solution() function with the parsed input
+5. Prints the result as JSON to stdout
+
+Return ONLY this JSON (no markdown, no explanation):
+{
+    "extension": ".ext",
+    "interpreted": true,
+    "runner": "command to run the file",
+    "compiler": null,
+    "compileArgs": [],
+    "wrapperTemplate": "full wrapper code with {CODE} and {INPUT} placeholders"
+}
+
+IMPORTANT:
+- For compiled languages like C++, Go, Rust: set interpreted=false, provide compiler command
+- The wrapperTemplate must be valid ${language} code
+- Use the language's native JSON parsing library
+- Handle errors gracefully, printing to stderr`;
+
+    try {
+        const response = await client.models.generateContent({
+            model: MODEL_NAME,
+            contents: prompt,
+        });
+
+        const text = response.text || '';
+
+        // Parse the JSON response
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new Error('No valid JSON in AI response');
+        }
+
+        const config = JSON.parse(jsonMatch[0]) as LanguageConfig;
+
+        // Validate required fields
+        if (!config.extension || !config.wrapperTemplate) {
+            throw new Error('Missing required fields in AI response');
+        }
+
+        // Cache it
+        aiGeneratedConfigs.set(language.toLowerCase(), config);
+        console.log(`[AI] Successfully generated config for ${language}`);
+
+        return config;
+    } catch (error) {
+        console.error(`[AI] Failed to generate config for ${language}:`, error);
+        // Fallback to JavaScript if AI fails
+        return LANGUAGE_REGISTRY.javascript;
+    }
+}
+
+// For compiled languages, generate a complete test harness using AI
+// This is needed because compiled languages can't dynamically parse JSON and call typed functions
+async function generateTestHarness(
+    language: string,
+    userCode: string,
+    testInput: string,
+    config: LanguageConfig
+): Promise<string> {
+    console.log(`[AI] Generating test harness for ${language}...`);
+
+    const prompt = `You are a ${language} expert. Generate a complete, compilable test harness.
+
+USER'S CODE (INCLUDE THIS EXACTLY AS-IS, DO NOT MODIFY):
+\`\`\`${language}
+${userCode}
+\`\`\`
+
+TEST INPUT (as JSON):
+${testInput}
+
+REQUIREMENTS:
+1. Include the USER'S CODE above EXACTLY as written - do not change it at all
+2. Add a main() function that:
+   - Constructs the input data as ${language} native types (vectors, strings, etc.) based on the JSON
+   - Calls the user's solution() function with this data
+   - Prints ONLY the result to stdout (as JSON-compatible format)
+3. Include any necessary headers/imports
+4. The code must compile and run without external dependencies
+
+CRITICAL: You MUST include the user's solution() function EXACTLY as provided above.
+Do NOT rewrite or "fix" the user's code. Just wrap it with a main() that tests it.
+
+Return ONLY the complete code, no explanations.`;
+
+    try {
+        const response = await client.models.generateContent({
+            model: MODEL_NAME,
+            contents: prompt,
+        });
+
+        let generatedCode = response.text || '';
+
+        // Strip markdown code blocks if present
+        generatedCode = generatedCode.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim();
+
+        console.log(`[AI] Generated test harness (${generatedCode.length} chars)`);
+        return generatedCode;
+    } catch (error) {
+        console.error(`[AI] Failed to generate test harness:`, error);
+        // Fallback to template
+        return config.wrapperTemplate
+            .replace('{CODE}', userCode)
+            .replace(/{INPUT}/g, testInput);
+    }
+}
+
+
 // Store interaction IDs for stateful conversations
 const conversationSessions: Map<string, string> = new Map();
 
@@ -1366,6 +1633,8 @@ Use this information to:
 - Create test cases that challenge their specific habits
 ` : '';
 
+        const isCompiledLang = ['cpp', 'c', 'c++', 'java', 'go'].includes(targetLang.toLowerCase());
+
         const prompt = `You are an expert programming instructor creating a LeetCode-style coding exercise.
 
 ## Task
@@ -1380,16 +1649,20 @@ ${personalizationSection}
 3. Target language: ${targetLang}
 4. Include 4-6 test cases (mix of visible and hidden)
 5. ${userCodeSamples ? "Tailor the exercise to match the student's apparent skill level from their code" : 'Assume intermediate skill level'}
+${isCompiledLang ? `6. **CRITICAL FOR ${targetLang.toUpperCase()}**: The starter code MUST be a COMPLETE PROGRAM with main().
+   - The program reads input from stdin (e.g., cin >> for C++, scanf for C)
+   - The program prints output to stdout (e.g., cout << for C++, printf for C)
+   - Test input will be passed via stdin, output captured from stdout` : `6. **CRITICAL**: The starter code MUST define a function named exactly \`solution\`. This is required for automated testing.`}
 
 ## Response Format (JSON only):
 {
     "title": "Short descriptive title",
     "description": "Full problem description in markdown. Include:\n- Problem statement\n- Input/output format\n- Constraints\n- 1-2 examples with explanations",
-    "starterCode": "Function signature and structure in ${targetLang}. Include comments indicating where to write code.",
+    "starterCode": "${isCompiledLang ? 'Complete program with main() that reads from stdin and prints to stdout' : "MUST contain a function named 'solution'"}",
     "testCases": [
         {
-            "input": "The input as a string (e.g., '[1, 2, 3]' or '5')",
-            "expectedOutput": "Expected output as a string",
+            "input": "MUST be valid JSON. Use null (not None), true/false (not True/False), double quotes for strings.",
+            "expectedOutput": "MUST be valid JSON. Same rules apply.",
             "isHidden": false,
             "explanation": "Brief explanation of this test case"
         }
@@ -1405,7 +1678,14 @@ ${personalizationSection}
 }
 
 Make the first 2-3 test cases visible (isHidden: false) and the rest hidden (isHidden: true).
-Ensure test cases cover edge cases and the core concept being tested.`;
+Ensure test cases cover edge cases and the core concept being tested.
+
+CRITICAL VALIDATION RULES:
+1. ${isCompiledLang ? 'Program MUST have main() and use stdin/stdout' : 'Function MUST be named `solution`'}
+2. All test inputs/outputs MUST be valid JSON
+3. Use \`null\` NOT \`None\`
+4. Use \`true\`/\`false\` NOT \`True\`/\`False\`
+5. Use double quotes for strings: \`"text"\` NOT \`'text'\``;
 
         const interaction = await client.interactions.create({
             model: MODEL_NAME,
@@ -1533,63 +1813,112 @@ app.post('/api/validate-exercise', async (req, res) => {
         for (let i = 0; i < testCases.length; i++) {
             const testCase = testCases[i];
 
-            // Create wrapper code to run the test
-            let wrapperCode = '';
+            // Get language configuration - try registry first, then AI fallback
             const lang = language || 'javascript';
+            let config = getLanguageConfig(lang);
 
-            if (lang === 'javascript' || lang === 'typescript') {
-                wrapperCode = `${code}
-
-// Test execution
-try {
-    const input = ${testCase.input};
-    const result = typeof solution === 'function' ? solution(input) : (typeof main === 'function' ? main(input) : null);
-    console.log(JSON.stringify(result));
-} catch (e) {
-    console.error(e.message);
-}`;
-            } else if (lang === 'python') {
-                wrapperCode = `${code}
-
-# Test execution
-try:
-    input_val = ${testCase.input}
-    result = solution(input_val) if 'solution' in dir() else main(input_val) if 'main' in dir() else None
-    import json
-    print(json.dumps(result))
-except Exception as e:
-    import sys
-    print(str(e), file=sys.stderr)`;
-            } else {
-                // For other languages, just run the code as-is
-                wrapperCode = code;
+            // If language not in registry, use AI to generate config
+            if (!config) {
+                config = await generateLanguageConfigWithAI(lang);
             }
+
+            // Normalize inputs to strings (AI sometimes returns objects/arrays instead of JSON strings)
+            const inputStr = typeof testCase.input === 'string' ? testCase.input : JSON.stringify(testCase.input);
+            const expectedStr = typeof testCase.expectedOutput === 'string' ? testCase.expectedOutput : JSON.stringify(testCase.expectedOutput);
+
+            // Build wrapper code using template substitution
+            // For compiled languages with usesStdin=true, the template is just {CODE}
+            // and input is passed via stdin at runtime
+            const inputEscaped = inputStr.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+            const wrapperCode = config.wrapperTemplate
+                .replace('{CODE}', code)
+                .replace(/{INPUT}/g, inputStr)
+                .replace(/{INPUT_ESCAPED}/g, inputEscaped);
+
+            // Debug logging
+            console.log(`[Validation] Running test ${i + 1} for ${lang}:`, { input: testCase.input, expected: testCase.expectedOutput });
 
             // Execute the code
             try {
-                const tempFile = join(tmpdir(), `exercise_${exerciseId || Date.now()}_test${i}.${lang === 'python' ? 'py' : 'js'}`);
+                const tempFile = join(tmpdir(), `exercise_${exerciseId || Date.now()}_test${i}${config.extension}`);
                 await writeFile(tempFile, wrapperCode);
 
-                const runner = lang === 'python' ? 'python3' : 'node';
-                const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
-                    let stdout = '';
-                    let stderr = '';
-                    const child = spawn(runner, [tempFile], { timeout: 10000 });
+                let execResult: { stdout: string; stderr: string; exitCode: number };
 
-                    child.stdout.on('data', (data) => { stdout += data.toString(); });
-                    child.stderr.on('data', (data) => { stderr += data.toString(); });
-                    child.on('close', (exitCode) => {
-                        resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: exitCode ?? 0 });
-                    });
-                    child.on('error', (err) => {
-                        resolve({ stdout: '', stderr: err.message, exitCode: 1 });
-                    });
-                });
+                if (config.interpreted) {
+                    // Interpreted language: run directly
+                    const runnerParts = config.runner.split(' ');
+                    const runnerCmd = runnerParts[0];
+                    const runnerArgs = [...runnerParts.slice(1), tempFile];
 
+                    execResult = await new Promise((resolve) => {
+                        let stdout = '';
+                        let stderr = '';
+                        const child = spawn(runnerCmd, runnerArgs, { timeout: 10000, shell: config.runner.includes(' ') });
+
+                        child.stdout.on('data', (data) => { stdout += data.toString(); });
+                        child.stderr.on('data', (data) => { stderr += data.toString(); });
+                        child.on('close', (exitCode) => {
+                            resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: exitCode ?? 0 });
+                        });
+                        child.on('error', (err) => {
+                            resolve({ stdout: '', stderr: err.message, exitCode: 1 });
+                        });
+                    });
+                } else {
+                    // Compiled language: compile first, then run
+                    const binaryFile = tempFile.replace(config.extension, '');
+
+                    // Compile
+                    const compileResult = await new Promise<{ stderr: string; exitCode: number }>((resolve) => {
+                        let stderr = '';
+                        const compileArgs = [...(config.compileArgs || []), '-o', binaryFile, tempFile];
+                        const child = spawn(config.compiler!, compileArgs, { timeout: 30000 });
+
+                        child.stderr.on('data', (data) => { stderr += data.toString(); });
+                        child.on('close', (exitCode) => {
+                            resolve({ stderr: stderr.trim(), exitCode: exitCode ?? 0 });
+                        });
+                        child.on('error', (err) => {
+                            resolve({ stderr: err.message, exitCode: 1 });
+                        });
+                    });
+
+                    if (compileResult.exitCode !== 0) {
+                        execResult = { stdout: '', stderr: `Compilation error: ${compileResult.stderr}`, exitCode: 1 };
+                    } else {
+                        // Run compiled binary, passing input via stdin if usesStdin
+                        execResult = await new Promise((resolve) => {
+                            let stdout = '';
+                            let stderr = '';
+                            const child = spawn(binaryFile, [], { timeout: 10000 });
+
+                            // If language uses stdin, pipe the input
+                            if (config.usesStdin) {
+                                child.stdin.write(inputStr + '\n');
+                                child.stdin.end();
+                            }
+
+                            child.stdout.on('data', (data) => { stdout += data.toString(); });
+                            child.stderr.on('data', (data) => { stderr += data.toString(); });
+                            child.on('close', (exitCode) => {
+                                resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: exitCode ?? 0 });
+                            });
+                            child.on('error', (err) => {
+                                resolve({ stdout: '', stderr: err.message, exitCode: 1 });
+                            });
+                        });
+
+                        // Cleanup binary
+                        await unlink(binaryFile).catch(() => { });
+                    }
+                }
+
+                const result = execResult;
                 await unlink(tempFile).catch(() => { });
 
                 const actualOutput = result.stdout.trim();
-                const expectedOutput = testCase.expectedOutput.trim();
+                const expectedOutput = expectedStr.trim();
                 const passed = actualOutput === expectedOutput ||
                     // Try parsing as JSON for comparison
                     ((() => {
@@ -1602,7 +1931,7 @@ except Exception as e:
 
                 results.push({
                     testCaseId: i,
-                    input: testCase.input,
+                    input: inputStr,
                     expectedOutput,
                     actualOutput: result.stderr ? `Error: ${result.stderr}` : actualOutput,
                     passed,
